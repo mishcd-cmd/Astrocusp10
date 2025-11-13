@@ -1,121 +1,367 @@
-// app/index.tsx
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  SafeAreaView,
+  TouchableOpacity,
+  Alert,
+  Platform,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import CosmicBackground from '@/components/CosmicBackground';
+import { router } from 'expo-router';
+import { User, Info, FileText, Crown, ArrowLeft } from 'lucide-react-native';
+import CosmicBackground from '../../components/CosmicBackground';
+import { getUserLanguage, setUserLanguage, type SupportedLanguage } from '@/utils/translation';
+import { signOut, getCurrentUser } from '@/utils/auth';
+import { clearUserData } from '@/utils/userData';
+import { openStripePortal } from '@/utils/billing';
 
-const logo = require('../assets/images/icon.png');
+// --- Paranoid: names/keys that should NEVER show in production
+const HIDDEN_KEYS = new Set([
+  'admin-clean-duplicate-profile',
+  'admin-clean-duplicates',
+  'clean-duplicate',
+  'remove-duplicate',
+]);
 
-export default function Welcome() {
-  const router = useRouter();
+function looksLikeHiddenAdminText(txt?: string | null) {
+  if (!txt) return false;
+  const s = txt.trim();
+  return (
+    /^:?\s*admin/i.test(s) &&
+    /duplicate/i.test(s)
+  ) || /clean.*duplicate/i.test(s)
+    || /remove.*duplicate/i.test(s);
+}
+
+// --- WEB-ONLY SWEEPER (kills injected admin tiles even if some runtime adds them)
+function useKillInjectedAdminCards() {
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || !document?.body) return;
+
+    const kill = () => {
+      // remove any clickable card whose text matches our admin/duplicate patterns
+      const all = Array.from(document.querySelectorAll<HTMLElement>('*'));
+      for (const el of all) {
+        const text = el.innerText || el.textContent || '';
+        if (looksLikeHiddenAdminText(text)) {
+          // Remove the nearest card-like container
+          const card = el.closest('[role="button"],a,button,div');
+          (card as HTMLElement | null)?.remove?.();
+        }
+      }
+    };
+
+    // run once now
+    kill();
+
+    // keep watching for runtime injections
+    const obs = new MutationObserver(() => kill());
+    obs.observe(document.body, { childList: true, subtree: true });
+
+    return () => obs.disconnect();
+  }, []);
+}
+
+export default function SettingsScreen() {
+  const [currentLanguage, setCurrentLanguage] = useState<SupportedLanguage>('en');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [astralLoading, setAstralLoading] = useState(false);
+
+  // Run the sweeper on web so injected admin tiles disappear immediately
+  useKillInjectedAdminCards();
+
+  useEffect(() => {
+    console.log('[settings] PRODUCTION: Settings screen loaded - NO ADMIN CARDS SHOULD BE VISIBLE');
+    console.log('[settings] Build timestamp:', new Date().toISOString());
+  }, []);
+
+  useEffect(() => {
+    loadLanguagePreference();
+    checkAuthStatus();
+  }, []);
+
+  const loadLanguagePreference = async () => {
+    try {
+      const language = await getUserLanguage();
+      setCurrentLanguage(language);
+    } catch (error) {
+      console.error('Error loading language preference:', error);
+    }
+  };
+
+  const checkAuthStatus = async () => {
+    try {
+      const user = await getCurrentUser();
+      setIsAuthenticated(!!user);
+    } catch (error) {
+      console.error('Error checking auth status:', error);
+      setIsAuthenticated(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/horoscope');
+    }
+  };
+
+  const handleMenuOption = (option: string) => {
+    switch (option) {
+      case 'account':
+        router.push('/settings/account');
+        break;
+      // case 'subscription':
+      //   router.push('/settings/subscription');
+      //   break;
+      case 'about':
+        router.push('/about');
+        break;
+      case 'terms':
+        router.push('/terms');
+        break;
+      case 'translate':
+        handleLanguageToggle();
+        break;
+      case 'signout':
+        handleSignOut();
+        break;
+    }
+  };
+
+  const handleSignOut = () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await clearUserData();
+              await signOut();
+              router.replace('/auth/login');
+            } catch (error) {
+              console.error('Sign out error:', error);
+              router.replace('/auth/login');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleLanguageToggle = async () => {
+    try {
+      const newLanguage = currentLanguage === 'en' ? 'zh' : 'en';
+      await setUserLanguage(newLanguage);
+      setCurrentLanguage(newLanguage);
+
+      setTimeout(async () => {
+        try {
+          const { getSubscriptionStatus } = await import('@/utils/billing');
+          await getSubscriptionStatus();
+        } catch (error) {
+          console.warn('Failed to refresh subscription after language change:', error);
+        }
+      }, 1000);
+
+      if (newLanguage === 'zh') {
+        Alert.alert(
+          '中文翻译已启用 (Chinese Translation Enabled)',
+          '应用程序现在将翻译成中文\n\nThe app will now translate to Chinese',
+          [{ text: '好的 OK' }]
+        );
+      }
+    } catch (error) {
+      Alert.alert(
+        'Translation Error',
+        'Failed to change language. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  const handleAstralPlanePress = async () => {
+    try {
+      console.log('[settings] Astral Plane pressed – opening Stripe portal');
+      setAstralLoading(true);
+      await openStripePortal();
+    } catch (e: any) {
+      console.error('[settings] Astral Plane / portal error', e);
+      Alert.alert(
+        'Billing Portal',
+        e?.message || 'Failed to open billing portal. Please try again.'
+      );
+    } finally {
+      setAstralLoading(false);
+    }
+  };
 
   return (
     <View style={styles.container}>
       <CosmicBackground />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Top CTA first */}
-        <TouchableOpacity onPress={() => router.push('/(tabs)/find-cusp')} style={styles.exploreCta} activeOpacity={0.8}>
-          <LinearGradient colors={['#2a2a44', '#1a1a2e']} style={styles.exploreCtaInner}>
-            <Text style={styles.exploreTitle}>Just want to explore?</Text>
-            <Text style={styles.exploreSubtitle}>Calculate your cusp instantly →</Text>
-          </LinearGradient>
-        </TouchableOpacity>
+      <SafeAreaView style={styles.safeArea}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.content}>
+            <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
+              <ArrowLeft size={24} color="#8b9dc3" />
+              <Text style={styles.backText}>Back</Text>
+            </TouchableOpacity>
 
-        {/* Hero */}
-        <View style={styles.hero}>
-          <Image source={logo} style={styles.logo} resizeMode="contain" />
-          <Text style={styles.title}>Welcome to Astrocusp</Text>
-          <Text style={styles.subtitle}>
-            Daily guidance for cusp souls and pure-signs—tuned to your hemisphere, lunar phase, and current sky.
-          </Text>
-        </View>
+            <Text style={styles.title}>Settings</Text>
+            <Text style={styles.subtitle}>
+              Manage your cosmic journey and app preferences
+            </Text>
 
-        {/* Actions */}
-        <View style={styles.actions}>
-          <TouchableOpacity onPress={() => router.push('/auth/signup')} style={styles.btnPrimary}>
-            <Text style={styles.btnPrimaryText}>Create account</Text>
-          </TouchableOpacity>
+            <View style={styles.menuOptions}>
+              {/* Account */}
+              <TouchableOpacity
+                style={styles.menuOption}
+                onPress={() => handleMenuOption('account')}
+              >
+                <LinearGradient
+                  colors={['rgba(139, 157, 195, 0.2)', 'rgba(139, 157, 195, 0.1)']}
+                  style={styles.menuOptionGradient}
+                >
+                  <User size={24} color="#8b9dc3" />
+                  <View style={styles.menuOptionContent}>
+                    <Text style={styles.menuOptionTitle}>Account</Text>
+                    <Text style={styles.menuOptionDescription}>
+                      View and edit your cosmic profile, or <Text style={styles.signOutText}>sign out</Text>
+                    </Text>
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => router.push('/auth/login')} style={styles.btnSecondary}>
-            <Text style={styles.btnSecondaryText}>Sign in</Text>
-          </TouchableOpacity>
+              {/* Astral Plane – now directly opens Stripe portal, NO navigation */}
+              <TouchableOpacity
+                style={styles.menuOption}
+                onPress={handleAstralPlanePress}
+                disabled={astralLoading}
+              >
+                <LinearGradient
+                  colors={['rgba(212, 175, 55, 0.2)', 'rgba(212, 175, 55, 0.1)']}
+                  style={styles.menuOptionGradient}
+                >
+                  <Crown size={24} color="#d4af37" />
+                  <View style={styles.menuOptionContent}>
+                    <Text style={styles.menuOptionTitle}>Astral Plane</Text>
+                    <Text style={styles.menuOptionDescription}>
+                      {astralLoading
+                        ? 'Opening billing portal…'
+                        : 'Manage your premium subscription'}
+                    </Text>
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => router.push('/(tabs)/astrology')} style={styles.btnTertiary}>
-            <Text style={styles.btnTertiaryText}>Go to Daily Guidance</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+              {/* About */}
+              <TouchableOpacity
+                style={styles.menuOption}
+                onPress={() => handleMenuOption('about')}
+              >
+                <LinearGradient
+                  colors={['rgba(139, 157, 195, 0.2)', 'rgba(139, 157, 195, 0.1)']}
+                  style={styles.menuOptionGradient}
+                >
+                  <Info size={24} color="#8b9dc3" />
+                  <View style={styles.menuOptionContent}>
+                    <Text style={styles.menuOptionTitle}>About Astro Cusp</Text>
+                    <Text style={styles.menuOptionDescription}>
+                      Learn how to use the app and features
+                    </Text>
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              {/* Terms & Conditions */}
+              <TouchableOpacity
+                style={styles.menuOption}
+                onPress={() => handleMenuOption('terms')}
+              >
+                <LinearGradient
+                  colors={['rgba(139, 157, 195, 0.2)', 'rgba(139, 157, 195, 0.1)']}
+                  style={styles.menuOptionGradient}
+                >
+                  <FileText size={24} color="#8b9dc3" />
+                  <View style={styles.menuOptionContent}>
+                    <Text style={styles.menuOptionTitle}>Terms & Conditions</Text>
+                    <Text style={styles.menuOptionDescription}>
+                      Review our terms and privacy policy
+                    </Text>
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 48 },
-
-  // Top CTA
-  exploreCta: { marginBottom: 20 },
-  exploreCtaInner: {
-    borderRadius: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(139,157,195,0.35)',
-  },
-  exploreTitle: {
-    fontSize: 16,
-    color: '#e8e8e8',
-    fontFamily: 'Vazirmatn-SemiBold',
-    textAlign: 'center',
-  },
-  exploreSubtitle: {
-    marginTop: 4,
-    fontSize: 14,
-    color: '#d4af37',
-    fontFamily: 'Vazirmatn-Medium',
-    textAlign: 'center',
-  },
-
-  // Hero
-  hero: { alignItems: 'center', marginBottom: 24 },
-  logo: { width: 96, height: 96, marginBottom: 12, borderRadius: 20 },
+  safeArea: { flex: 1 },
+  scrollContent: { flexGrow: 1, paddingHorizontal: 24, paddingBottom: 40 },
+  backButton: { flexDirection: 'row', alignItems: 'center', paddingTop: 20, paddingBottom: 10 },
+  backText: { fontSize: 16, fontFamily: 'Inter-Medium', color: '#8b9dc3', marginLeft: 8 },
+  content: { flex: 1, paddingTop: 60 },
   title: {
-    fontSize: 24,
-    color: '#e8e8e8',
+    fontSize: 44,
     fontFamily: 'Vazirmatn-Bold',
+    color: '#e8e8e8',
     textAlign: 'center',
-    letterSpacing: 0.2,
+    marginBottom: 8,
+    letterSpacing: 2,
   },
   subtitle: {
-    marginTop: 8,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 20,
+    fontFamily: 'Inter-Regular',
     color: '#8b9dc3',
-    fontFamily: 'Vazirmatn-Regular',
     textAlign: 'center',
+    marginBottom: 40,
+    lineHeight: 24,
   },
-
-  // Actions
-  actions: { gap: 12, marginTop: 24 },
-  btnPrimary: {
-    backgroundColor: '#d4af37',
-    borderRadius: 12,
-    paddingVertical: 12,
+  menuOptions: { gap: 20 },
+  menuOption: { borderRadius: 16, overflow: 'hidden' },
+  menuOptionGradient: {
+    flexDirection: 'row',
     alignItems: 'center',
-  },
-  btnPrimaryText: { color: '#1a1a2e', fontFamily: 'Vazirmatn-SemiBold', fontSize: 16 },
-
-  btnSecondary: {
-    backgroundColor: 'rgba(26,26,46,0.6)',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
+    padding: 24,
     borderWidth: 1,
-    borderColor: 'rgba(139,157,195,0.35)',
+    borderColor: 'rgba(139, 157, 195, 0.3)',
+    borderRadius: 16,
   },
-  btnSecondaryText: { color: '#e8e8e8', fontFamily: 'Vazirmatn-SemiBold', fontSize: 16 },
-
-  btnTertiary: { backgroundColor: 'transparent', borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
-  btnTertiaryText: { color: '#8b9dc3', fontFamily: 'Vazirmatn-Regular', fontSize: 15 },
+  menuOptionContent: { marginLeft: 16, flex: 1 },
+  menuOptionTitle: {
+    fontSize: 22,
+    fontFamily: 'Inter-SemiBold',
+    color: '#e8e8e8',
+    marginBottom: 4,
+  },
+  menuOptionDescription: {
+    fontSize: 18,
+    fontFamily: 'Inter-Regular',
+    color: '#8b9dc3',
+    lineHeight: 20,
+  },
+  refreshNote: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: '#8b9dc3',
+    marginTop: 4,
+    opacity: 0.8,
+  },
+  signOutText: { color: '#f87171' },
 });
