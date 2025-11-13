@@ -12,7 +12,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { User, Info, FileText, Crown, ArrowLeft } from 'lucide-react-native';
-import CosmicBackground from '../../components/CosmicBackground';
+import CosmicBackground from '@/components/CosmicBackground';
 import { getUserLanguage, setUserLanguage, type SupportedLanguage } from '@/utils/translation';
 import { signOut, getCurrentUser } from '@/utils/auth';
 import { clearUserData } from '@/utils/userData';

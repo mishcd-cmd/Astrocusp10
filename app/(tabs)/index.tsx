@@ -16,6 +16,7 @@ import { MapPin, Clock, Calendar, ArrowRight, Gem } from 'lucide-react-native';
 import { router, useRouter, usePathname } from 'expo-router';
 
 import CosmicBackground from '@/components/CosmicBackground';
+
 import CosmicButton from '@/components/CosmicButton';
 import CosmicInput from '@/components/CosmicInput';
 import CuspLogo from '@/components/CuspLogo';

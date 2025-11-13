@@ -13,7 +13,15 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { Crown, CreditCard, Eye, ArrowLeft, Star, Calendar, Zap } from 'lucide-react-native';
+import {
+  Crown,
+  CreditCard,
+  Eye,
+  ArrowLeft,
+  Star,
+  Calendar,
+  Zap,
+} from 'lucide-react-native';
 
 import CosmicBackground from '@/components/CosmicBackground';
 import {
@@ -25,7 +33,7 @@ import {
   getSubscriptionStatus,
 } from '@/utils/billing';
 
-// This matches what billing.ts returns (SubscriptionCheck)
+// Match what billing.ts returns (SubscriptionCheck), plus optional isVip
 type SubStatus = {
   active: boolean;
   plan?: 'monthly' | 'yearly';
@@ -34,7 +42,30 @@ type SubStatus = {
   price_id?: string | null;
   status?: string;
   isVip?: boolean;
+  [key: string]: any;
 } | null;
+
+/**
+ * Safe icon wrapper to avoid React 130 if any lucide icon import is undefined.
+ */
+function makeSafeIcon(IconComponent: any) {
+  return function SafeIcon(props: any) {
+    if (!IconComponent) {
+      // Fallback to a simple View so React always gets a valid element type
+      return <View style={props?.style} />;
+    }
+    return <IconComponent {...props} />;
+  };
+}
+
+// Safe icon components
+const CrownIcon = makeSafeIcon(Crown);
+const CreditCardIcon = makeSafeIcon(CreditCard);
+const EyeIcon = makeSafeIcon(Eye);
+const ArrowLeftIcon = makeSafeIcon(ArrowLeft);
+const StarIcon = makeSafeIcon(Star);
+const CalendarIcon = makeSafeIcon(Calendar);
+const ZapIcon = makeSafeIcon(Zap);
 
 export default function SubscriptionScreen() {
   const [loading, setLoading] = useState(true);
@@ -46,6 +77,7 @@ export default function SubscriptionScreen() {
   const refreshStatus = useCallback(async () => {
     try {
       const s = await getSubscriptionStatus();
+      console.log('[subscription] Status payload', s);
       setStatus(s);
     } catch (e) {
       console.error('[subscription] status error', e);
@@ -90,7 +122,10 @@ export default function SubscriptionScreen() {
       await openStripePortal();
     } catch (e: any) {
       console.error('[subscription] portal error', e);
-      Alert.alert('Billing Portal', e?.message || 'Failed to open billing portal.');
+      Alert.alert(
+        'Billing Portal',
+        e?.message || 'Failed to open billing portal.'
+      );
     } finally {
       setActionLoading(null);
     }
@@ -100,7 +135,10 @@ export default function SubscriptionScreen() {
     try {
       setActionLoading('upgrade');
       const res = await upgradeToYearly();
-      Alert.alert('Upgrade', res?.message || 'Your plan has been upgraded to yearly.');
+      Alert.alert(
+        'Upgrade',
+        res?.message || 'Your plan has been upgraded to yearly.'
+      );
       await refreshStatus();
     } catch (e: any) {
       console.error('[subscription] upgrade error', e);
@@ -114,7 +152,7 @@ export default function SubscriptionScreen() {
     try {
       console.log('[subscription] Monthly button clicked - starting process...');
       setActionLoading('monthly');
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
       await subscribeMonthly();
     } catch (e: any) {
       console.error('[subscription] monthly error', e);
@@ -122,9 +160,15 @@ export default function SubscriptionScreen() {
 
       if (e?.message?.includes('network') || e?.message?.includes('fetch')) {
         errorMessage += 'Please check your internet connection and try again.';
-      } else if (e?.message?.includes('authentication') || e?.message?.includes('auth')) {
+      } else if (
+        e?.message?.includes('authentication') ||
+        e?.message?.includes('auth')
+      ) {
         errorMessage += 'Please sign in and try again.';
-      } else if (e?.message?.includes('stripe') || e?.message?.includes('payment')) {
+      } else if (
+        e?.message?.includes('stripe') ||
+        e?.message?.includes('payment')
+      ) {
         errorMessage += 'Payment system error. Please try again in a moment.';
       } else {
         errorMessage += e?.message || 'Please try again.';
@@ -140,13 +184,14 @@ export default function SubscriptionScreen() {
     try {
       console.log('[subscription] Starting yearly subscription...');
       setActionLoading('yearly');
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
       await subscribeYearly();
     } catch (e: any) {
       console.error('[subscription] yearly error', e);
       Alert.alert(
         'Subscription Failed',
-        e?.message || 'Unable to start subscription. Please check your connection and try again.'
+        e?.message ||
+          'Unable to start subscription. Please check your connection and try again.'
       );
     } finally {
       setActionLoading(null);
@@ -157,7 +202,7 @@ export default function SubscriptionScreen() {
     try {
       console.log('[subscription] One-off button clicked - starting process...');
       setActionLoading('one-off');
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
       await buyOneOffReading();
     } catch (e: any) {
       console.error('[subscription] one-off error', e);
@@ -174,7 +219,9 @@ export default function SubscriptionScreen() {
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#d4af37" />
-            <Text style={styles.loadingText}>Loading subscription details...</Text>
+            <Text style={styles.loadingText}>
+              Loading subscription details...
+            </Text>
           </View>
         </SafeAreaView>
       </View>
@@ -192,7 +239,7 @@ export default function SubscriptionScreen() {
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
-            <ArrowLeft size={24} color="#8b9dc3" />
+            <ArrowLeftIcon size={24} color="#8b9dc3" />
             <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
 
@@ -210,14 +257,15 @@ export default function SubscriptionScreen() {
               style={styles.statusCard}
             >
               <View style={styles.statusHeader}>
-                <Crown size={24} color={isActive ? '#8bc34a' : '#8b9dc3'} />
+                <CrownIcon size={24} color={isActive ? '#8bc34a' : '#8b9dc3'} />
                 <Text style={styles.statusTitle}>Current Status</Text>
               </View>
 
               {isActive ? (
                 <>
                   <Text style={styles.statusActive}>
-                    Active ({isVip ? 'VIP Access' : isYearly ? 'Yearly' : 'Monthly'} Plan)
+                    Active (
+                    {isVip ? 'VIP Access' : isYearly ? 'Yearly' : 'Monthly'} Plan)
                   </Text>
                   {isVip && (
                     <Text style={styles.vipBadge}>
@@ -237,16 +285,22 @@ export default function SubscriptionScreen() {
 
                   <View style={styles.activeFeatures}>
                     <View style={styles.featureItem}>
-                      <Star size={16} color="#8bc34a" />
-                      <Text style={styles.featureText}>Daily Astral Plane insights</Text>
+                      <StarIcon size={16} color="#8bc34a" />
+                      <Text style={styles.featureText}>
+                        Daily Astral Plane insights
+                      </Text>
                     </View>
                     <View style={styles.featureItem}>
-                      <Calendar size={16} color="#8bc34a" />
-                      <Text style={styles.featureText}>Monthly cosmic forecasts</Text>
+                      <CalendarIcon size={16} color="#8bc34a" />
+                      <Text style={styles.featureText}>
+                        Monthly cosmic forecasts
+                      </Text>
                     </View>
                     <View style={styles.featureItem}>
-                      <Zap size={16} color="#8bc34a" />
-                      <Text style={styles.featureText}>Astronomical context</Text>
+                      <ZapIcon size={16} color="#8bc34a" />
+                      <Text style={styles.featureText}>
+                        Astronomical context
+                      </Text>
                     </View>
                   </View>
                 </>
@@ -254,7 +308,8 @@ export default function SubscriptionScreen() {
                 <>
                   <Text style={styles.statusInactive}>No active subscription</Text>
                   <Text style={styles.statusDescription}>
-                    Subscribe to unlock deeper cosmic insights and personalised guidance.
+                    Subscribe to unlock deeper cosmic insights and personalised
+                    guidance.
                   </Text>
                 </>
               )}
@@ -263,11 +318,14 @@ export default function SubscriptionScreen() {
             {/* Management (only if active and not VIP) */}
             {isActive && !isVip && (
               <LinearGradient
-                colors={['rgba(212, 175, 55, 0.15)', 'rgba(212, 175, 55, 0.05)']}
+                colors={[
+                  'rgba(212, 175, 55, 0.15)',
+                  'rgba(212, 175, 55, 0.05)',
+                ]}
                 style={styles.managementCard}
               >
                 <View style={styles.managementHeader}>
-                  <CreditCard size={20} color="#d4af37" />
+                  <CreditCardIcon size={20} color="#d4af37" />
                   <Text style={styles.managementTitle}>Manage Subscription</Text>
                 </View>
 
@@ -277,9 +335,9 @@ export default function SubscriptionScreen() {
                     onPress={onOpenPortal}
                     disabled={actionLoading === 'portal'}
                   >
-                    <CreditCard size={16} color="#8b9dc3" />
+                    <CreditCardIcon size={16} color="#8b9dc3" />
                     <Text style={styles.portalButtonText}>
-                      {actionLoading === 'portal' ? 'Opening…' : 'Billing Portal'}
+                      {actionLoading === 'portal' ? 'Opening...' : 'Billing Portal'}
                     </Text>
                   </TouchableOpacity>
 
@@ -289,16 +347,19 @@ export default function SubscriptionScreen() {
                       onPress={onUpgrade}
                       disabled={actionLoading === 'upgrade'}
                     >
-                      <Crown size={16} color="#1a1a2e" />
+                      <CrownIcon size={16} color="#1a1a2e" />
                       <Text style={styles.upgradeButtonText}>
-                        {actionLoading === 'upgrade' ? 'Upgrading…' : 'Upgrade to Yearly'}
+                        {actionLoading === 'upgrade'
+                          ? 'Upgrading...'
+                          : 'Upgrade to Yearly'}
                       </Text>
                     </TouchableOpacity>
                   )}
                 </View>
 
                 <Text style={styles.managementNote}>
-                  Use the billing portal to update payment methods, view invoices, or cancel your subscription.
+                  Use the billing portal to update payment methods, view invoices,
+                  or cancel your subscription.
                 </Text>
               </LinearGradient>
             )}
@@ -306,15 +367,18 @@ export default function SubscriptionScreen() {
             {/* VIP Message */}
             {isVip && (
               <LinearGradient
-                colors={['rgba(212, 175, 55, 0.25)', 'rgba(212, 175, 55, 0.15)']}
+                colors={[
+                  'rgba(212, 175, 55, 0.25)',
+                  'rgba(212, 175, 55, 0.15)',
+                ]}
                 style={styles.vipCard}
               >
                 <View style={styles.vipHeader}>
-                  <Crown size={24} color="#d4af37" />
+                  <CrownIcon size={24} color="#d4af37" />
                   <Text style={styles.vipTitle}>VIP Account</Text>
                 </View>
                 <Text style={styles.vipDescription}>
-                  You have complimentary access to all Astral Plane features. 
+                  You have complimentary access to all Astral Plane features.
                   Thank you for being part of the Astro Cusp community.
                 </Text>
               </LinearGradient>
@@ -326,11 +390,14 @@ export default function SubscriptionScreen() {
                 <Text style={styles.optionsTitle}>Choose Your Plan</Text>
 
                 <LinearGradient
-                  colors={['rgba(212, 175, 55, 0.2)', 'rgba(212, 175, 55, 0.1)']}
+                  colors={[
+                    'rgba(212, 175, 55, 0.2)',
+                    'rgba(212, 175, 55, 0.1)',
+                  ]}
                   style={styles.planCard}
                 >
                   <View style={styles.planHeader}>
-                    <Crown size={20} color="#d4af37" />
+                    <CrownIcon size={20} color="#d4af37" />
                     <Text style={styles.planName}>Monthly Plan</Text>
                   </View>
                   <Text style={styles.planPrice}>$8.00 AUD / month</Text>
@@ -355,18 +422,21 @@ export default function SubscriptionScreen() {
                       {isVip
                         ? 'VIP Access Active'
                         : actionLoading === 'monthly'
-                        ? 'Processing…'
+                        ? 'Processing...'
                         : 'Start Monthly'}
                     </Text>
                   </TouchableOpacity>
                 </LinearGradient>
 
                 <LinearGradient
-                  colors={['rgba(212, 175, 55, 0.25)', 'rgba(212, 175, 55, 0.15)']}
+                  colors={[
+                    'rgba(212, 175, 55, 0.25)',
+                    'rgba(212, 175, 55, 0.15)',
+                  ]}
                   style={[styles.planCard, styles.yearlyPlanCard]}
                 >
                   <View style={styles.planHeader}>
-                    <Crown size={20} color="#d4af37" />
+                    <CrownIcon size={20} color="#d4af37" />
                     <Text style={styles.planName}>Yearly Plan</Text>
                     <View style={styles.savingsBadge}>
                       <Text style={styles.savingsText}>Save up to 10%</Text>
@@ -395,7 +465,7 @@ export default function SubscriptionScreen() {
                       {isVip
                         ? 'VIP Access Active'
                         : actionLoading === 'yearly'
-                        ? 'Processing…'
+                        ? 'Processing...'
                         : 'Start Yearly'}
                     </Text>
                   </TouchableOpacity>
@@ -405,19 +475,23 @@ export default function SubscriptionScreen() {
 
             {/* One-off Reading */}
             <LinearGradient
-              colors={['rgba(139, 157, 195, 0.2)', 'rgba(139, 157, 195, 0.1)']}
+              colors={[
+                'rgba(139, 157, 195, 0.2)',
+                'rgba(139, 157, 195, 0.1)',
+              ]}
               style={styles.oneOffCard}
             >
               <View style={styles.oneOffHeader}>
-                <Eye size={24} color="#8b9dc3" />
+                <EyeIcon size={24} color="#8b9dc3" />
                 <Text style={styles.oneOffTitle}>One-Time Reading</Text>
               </View>
 
               <Text style={styles.oneOffPrice}>$360.00 AUD</Text>
               <Text style={styles.oneOffDescription}>
-                Get a comprehensive one-time cusp analysis with detailed insights,
-                birthstone guidance, personalised cosmic profile, and a copy of the
-                AstroCusp ebook containing all cusp personalities, without a subscription.
+                Get a comprehensive one-time cusp analysis with detailed
+                insights, birthstone guidance, personalised cosmic profile, and
+                a copy of the AstroCusp ebook containing all cusp personalities,
+                without a subscription.
               </Text>
 
               <TouchableOpacity
@@ -429,7 +503,7 @@ export default function SubscriptionScreen() {
                 onPress={onBuyOneOff}
                 disabled={actionLoading !== null || isVip}
               >
-                <Eye size={16} color="#1a1a2e" />
+                <EyeIcon size={16} color="#1a1a2e" />
                 <Text
                   style={[
                     styles.oneOffButtonText,
@@ -439,7 +513,7 @@ export default function SubscriptionScreen() {
                   {isVip
                     ? 'VIP Access Active'
                     : actionLoading === 'one-off'
-                    ? 'Processing…'
+                    ? 'Processing...'
                     : 'Purchase Reading'}
                 </Text>
               </TouchableOpacity>
@@ -455,7 +529,9 @@ export default function SubscriptionScreen() {
             {actionLoading && (
               <View style={styles.loadingOverlay}>
                 <ActivityIndicator size="large" color="#d4af37" />
-                <Text style={styles.loadingActionText}>Processing {actionLoading}…</Text>
+                <Text style={styles.loadingActionText}>
+                  Processing {actionLoading}...
+                </Text>
               </View>
             )}
           </View>
@@ -469,8 +545,18 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
   scrollContent: { flexGrow: 1, paddingHorizontal: 24, paddingBottom: 40 },
-  backButton: { flexDirection: 'row', alignItems: 'center', paddingTop: 20, paddingBottom: 10 },
-  backText: { fontSize: 16, fontFamily: 'Inter-Medium', color: '#8b9dc3', marginLeft: 8 },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 20,
+    paddingBottom: 10,
+  },
+  backText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Medium',
+    color: '#8b9dc3',
+    marginLeft: 8,
+  },
   content: { flex: 1, paddingTop: 20 },
   title: {
     fontSize: 36,
@@ -490,7 +576,12 @@ const styles = StyleSheet.create({
   },
 
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingText: { fontSize: 16, fontFamily: 'Inter-Regular', color: '#8b9dc3', marginTop: 12 },
+  loadingText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#8b9dc3',
+    marginTop: 12,
+  },
 
   statusCard: {
     borderRadius: 16,
@@ -499,8 +590,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(139, 157, 195, 0.3)',
   },
-  statusHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  statusTitle: { fontSize: 20, fontFamily: 'PlayfairDisplay-Bold', color: '#e8e8e8', marginLeft: 12 },
+  statusHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  statusTitle: {
+    fontSize: 20,
+    fontFamily: 'PlayfairDisplay-Bold',
+    color: '#e8e8e8',
+    marginLeft: 12,
+  },
   statusActive: {
     fontSize: 18,
     fontFamily: 'Inter-SemiBold',
@@ -531,8 +632,17 @@ const styles = StyleSheet.create({
   },
 
   activeFeatures: { gap: 8, marginTop: 8 },
-  featureItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
-  featureText: { fontSize: 14, fontFamily: 'Inter-Medium', color: '#e8e8e8', marginLeft: 8 },
+  featureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  featureText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: '#e8e8e8',
+    marginLeft: 8,
+  },
 
   managementCard: {
     borderRadius: 16,
@@ -541,8 +651,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(212, 175, 55, 0.3)',
   },
-  managementHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  managementTitle: { fontSize: 18, fontFamily: 'Inter-SemiBold', color: '#d4af37', marginLeft: 12 },
+  managementHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  managementTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
+    color: '#d4af37',
+    marginLeft: 12,
+  },
   buttonRow: { flexDirection: 'row', gap: 12, marginBottom: 12, flexWrap: 'wrap' },
 
   actionButton: {
@@ -562,9 +681,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(139, 157, 195, 0.4)',
   },
-  portalButtonText: { color: '#8b9dc3', fontFamily: 'Inter-Medium', fontSize: 14 },
+  portalButtonText: {
+    color: '#8b9dc3',
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+  },
   upgradeButton: { backgroundColor: '#d4af37' },
-  upgradeButtonText: { color: '#1a1a2e', fontFamily: 'Inter-SemiBold', fontSize: 14 },
+  upgradeButtonText: {
+    color: '#1a1a2e',
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+  },
   managementNote: {
     fontSize: 12,
     fontFamily: 'Inter-Regular',
@@ -590,16 +717,33 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(212, 175, 55, 0.3)',
   },
-  yearlyPlanCard: { borderWidth: 2, borderColor: 'rgba(212, 175, 55, 0.5)' },
-  planHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  planName: { fontSize: 18, fontFamily: 'Inter-SemiBold', color: '#e8e8e8', marginLeft: 12, flex: 1 },
+  yearlyPlanCard: {
+    borderWidth: 2,
+    borderColor: 'rgba(212, 175, 55, 0.5)',
+  },
+  planHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  planName: {
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
+    color: '#e8e8e8',
+    marginLeft: 12,
+    flex: 1,
+  },
   savingsBadge: {
     backgroundColor: '#8bc34a',
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  savingsText: { fontSize: 12, fontFamily: 'Inter-SemiBold', color: '#1a1a2e' },
+  savingsText: {
+    fontSize: 12,
+    fontFamily: 'Inter-SemiBold',
+    color: '#1a1a2e',
+  },
   planPrice: {
     fontSize: 24,
     fontFamily: 'PlayfairDisplay-Bold',
@@ -623,7 +767,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   subscribeButton: { backgroundColor: '#d4af37' },
-  subscribeButtonText: { color: '#1a1a2e', fontFamily: 'Inter-SemiBold', fontSize: 16 },
+  subscribeButtonText: {
+    color: '#1a1a2e',
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 16,
+  },
 
   oneOffCard: {
     borderRadius: 16,
@@ -632,8 +780,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(139, 157, 195, 0.3)',
   },
-  oneOffHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  oneOffTitle: { fontSize: 18, fontFamily: 'Inter-SemiBold', color: '#8b9dc3', marginLeft: 12 },
+  oneOffHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  oneOffTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
+    color: '#8b9dc3',
+    marginLeft: 12,
+  },
   oneOffPrice: {
     fontSize: 28,
     fontFamily: 'PlayfairDisplay-Bold',
@@ -650,7 +807,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   oneOffButton: { backgroundColor: '#8b9dc3', marginBottom: 12 },
-  oneOffButtonText: { color: '#1a1a2e', fontFamily: 'Inter-SemiBold', fontSize: 16 },
+  oneOffButtonText: {
+    color: '#1a1a2e',
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 16,
+  },
   oneOffNote: {
     fontSize: 12,
     fontFamily: 'Inter-Regular',
@@ -692,7 +853,12 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'rgba(212, 175, 55, 0.5)',
   },
-  vipHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  vipHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
   vipTitle: {
     fontSize: 20,
     fontFamily: 'PlayfairDisplay-Bold',
