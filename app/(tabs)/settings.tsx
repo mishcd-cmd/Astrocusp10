@@ -23,7 +23,7 @@ import {
 import { signOut, getCurrentUser } from '@/utils/auth';
 import { clearUserData } from '@/utils/userData';
 
-// Paranoid: names or keys that should never show in production
+// Guard words that should never show in production
 const HIDDEN_KEYS = new Set([
   'admin-clean-duplicate-profile',
   'admin-clean-duplicates',
@@ -227,10 +227,10 @@ export default function SettingsScreen() {
                 </LinearGradient>
               </TouchableOpacity>
 
-              {/* Astral Plane - goes to subscription screen with buttons */}
+              {/* Astral Plane - goes to subscription screen inside tabs */}
               <TouchableOpacity
                 style={styles.menuOption}
-                onPress={() => router.push('/settings/subscription')}
+                onPress={() => router.push('/(tabs)/subscription')}
               >
                 <LinearGradient
                   colors={[
