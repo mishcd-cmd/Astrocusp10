@@ -1,12 +1,17 @@
-import React, { useEffect, useRef, useState } from 'react'; 
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, usePathname } from 'expo-router';
 import { supabase } from '@/utils/supabase';
 import { clearLocalAuthData } from '@/utils/auth';
 import CosmicBackground from './CosmicBackground';
 
-export default function AuthGate({ children }: { children: React.ReactNode }) {
+type Props = {
+  children: React.ReactNode;
+};
+
+export default function AuthGate({ children }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
   const [ready, setReady] = useState(false);
   const routedRef = useRef(false);
 
@@ -16,18 +21,24 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     const initAuth = async () => {
       try {
         console.log('🔍 [AuthGate] Checking existing session...');
-        
-        // Check for existing session first
+
         const { data: { session } } = await supabase.auth.getSession();
-        
+
         if (!mounted) return;
-        
+
         console.log('🔍 [AuthGate] Session check result:', {
           hasSession: !!session,
-          email: session?.user?.email
+          email: session?.user?.email,
         });
-        
-        // Don't redirect here - let the main app routing handle it
+
+        if (!session) {
+          // No session at all → go to login
+          if (!routedRef.current && pathname !== '/auth/login') {
+            routedRef.current = true;
+            router.replace('/auth/login');
+          }
+        }
+
         setReady(true);
       } catch (error) {
         console.error('❌ [AuthGate] Error checking session:', error);
@@ -44,34 +55,38 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
 
     initAuth();
 
-    // Listen for auth state changes
-    const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
-      
-      console.log('🔄 [AuthGate] Auth state change:', event, !!session?.user);
-      
-      // Only handle explicit sign out - let app handle other routing
-      if (event === 'SIGNED_OUT' && !routedRef.current) {
-        console.log('ℹ️ [AuthGate] User signed out, redirecting to login');
-        routedRef.current = true;
-        router.replace('/auth/login');
-      }
-      
-      // Handle password recovery
-      if (event === 'PASSWORD_RECOVERY') {
-        console.log('🔑 [AuthGate] Password recovery detected');
-        if (!routedRef.current) {
+    const { data } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!mounted) return;
+
+        console.log('🔄 [AuthGate] Auth state change:', event, !!session?.user);
+
+        if (event === 'SIGNED_IN' && session?.user && !routedRef.current) {
+          // Always land on Daily after sign in
+          console.log('✅ [AuthGate] Signed in – routing to Daily');
+          routedRef.current = true;
+          router.replace('/(tabs)/astrology');
+        }
+
+        if (event === 'SIGNED_OUT' && !routedRef.current) {
+          console.log('ℹ️ [AuthGate] User signed out, redirecting to login');
+          routedRef.current = true;
+          router.replace('/auth/login');
+        }
+
+        if (event === 'PASSWORD_RECOVERY' && !routedRef.current) {
+          console.log('🔑 [AuthGate] Password recovery detected');
           routedRef.current = true;
           router.replace('/password-reset');
         }
       }
-    });
+    );
 
     return () => {
       mounted = false;
-      data.subscription.unsubscribe();
+      data.subscription?.unsubscribe();
     };
-  }, [router]);
+  }, [router, pathname]);
 
   if (!ready) {
     return (
