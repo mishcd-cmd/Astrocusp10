@@ -1,4 +1,4 @@
-// utils/sessionReady.ts
+// utils/sessionReady.ts 
 import { supabase } from './supabase';
 
 let checked = false;

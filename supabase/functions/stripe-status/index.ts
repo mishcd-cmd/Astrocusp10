@@ -1,4 +1,4 @@
-import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
+import 'jsr:@supabase/functions-js/edge-runtime.d.ts' 
 import Stripe from 'npm:stripe@17.7.0'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 

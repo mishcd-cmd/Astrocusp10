@@ -1,4 +1,4 @@
-// components/GlobalFontDefault.tsx
+// components/GlobalFontDefault.tsx 
 import React, { useEffect } from 'react';
 import { Platform, Text, TextInput } from 'react-native';
 

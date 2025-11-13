@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'; 
+import React, { useEffect, useState } from 'react';  
 import { View, Text, Image, ActivityIndicator, StyleSheet, Pressable } from 'react-native';
 import { getAstronomicalInsightWithApod, type ApodResult } from '@/utils/astronomy';
 

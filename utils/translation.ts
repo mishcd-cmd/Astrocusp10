@@ -1,4 +1,4 @@
-// Simple translation service that won't conflict with forecast
+// Simple translation service that won't conflict with forecast 
 export type SupportedLanguage = 'en' | 'zh';
 
 // Simple translation function

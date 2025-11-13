@@ -1,4 +1,4 @@
-// utils/astronomy.ts  
+// utils/astronomy.ts 
 // Daily Astronomy helpers (browser-safe).
 // - Moon phase: SunCalc
 // - Planets: lightweight VSOP-style inspired approximations (sign-accurate UI for 2025)

@@ -1,4 +1,4 @@
-import { UserProfile } from './userData';
+import { UserProfile } from './userData'; 
 
 export function normalizeSignLabel(label?: string): string | undefined {
   if (!label) return undefined;

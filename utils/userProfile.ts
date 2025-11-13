@@ -1,4 +1,4 @@
-// utils/userProfile.ts
+// utils/userProfile.ts 
 import { supabase } from '@/utils/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 

@@ -1,4 +1,4 @@
-// project 10/app/settings/account.tsx
+// project 10/app/settings/account.tsx 
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';

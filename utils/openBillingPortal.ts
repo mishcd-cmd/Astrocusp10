@@ -1,4 +1,4 @@
-// Path: project10/utils/openBillingPortal.ts
+// Path: project10/utils/openBillingPortal.ts 
 // Opens the Stripe Billing Portal securely via your Supabase Edge Function
 
 import { supabase } from '@/utils/supabase';

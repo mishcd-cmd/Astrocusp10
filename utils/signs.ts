@@ -1,4 +1,4 @@
-// utils/signs.ts
+// utils/signs.ts 
 
 /** -------- Slug (for URLs only) -------- */
 export function slugifySign(input?: string): string {

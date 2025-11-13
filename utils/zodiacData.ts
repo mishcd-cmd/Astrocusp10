@@ -1,4 +1,4 @@
-import { ZODIAC_SIGNS } from './astrology';
+import { ZODIAC_SIGNS } from './astrology'; 
 
 // Birthstone data for each zodiac sign
 export interface BirthstoneInfo {

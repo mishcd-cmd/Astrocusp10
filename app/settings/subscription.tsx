@@ -1,4 +1,4 @@
-// Helper to open billing portal without cookies (works on web and native)
+// Helper to open billing portal without cookies (works on web and native) 
 import { supabase } from '@/utils/supabase';
 import { Linking, Platform } from 'react-native';
 

@@ -1,4 +1,4 @@
-// Birthstone data for pure zodiac signs
+// Birthstone data for pure zodiac signs 
 export const PURE_SIGN_BIRTHSTONES = [
   { 
     sign: 'Capricorn', 

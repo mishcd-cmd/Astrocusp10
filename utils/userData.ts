@@ -1,4 +1,4 @@
-// utils/userData.ts
+// utils/userData.ts 
 import type { User } from '@supabase/supabase-js';
 import { CuspResult } from './astrology';
 import { clearLocalAuthData } from './auth';

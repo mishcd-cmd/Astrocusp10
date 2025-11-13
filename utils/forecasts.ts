@@ -1,4 +1,4 @@
-// utils/forecasts.ts
+// utils/forecasts.ts 
 import { supabase } from '@/utils/supabase';
 import { Platform } from 'react-native';
 

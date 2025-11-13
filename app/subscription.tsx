@@ -1,4 +1,4 @@
-// project 10/app/subscription.tsx
+// project 10/app/subscription.tsx 
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,

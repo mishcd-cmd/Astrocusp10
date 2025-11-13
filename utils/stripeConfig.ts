@@ -1,4 +1,4 @@
-// Centralized Stripe configuration
+// Centralized Stripe configuration 
 export const STRIPE_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '';
 export const STRIPE_PRICE_MONTHLY = process.env.EXPO_PUBLIC_STRIPE_PRICE_MONTHLY ?? '';
 export const STRIPE_PRICE_YEARLY = process.env.EXPO_PUBLIC_STRIPE_PRICE_YEARLY ?? '';

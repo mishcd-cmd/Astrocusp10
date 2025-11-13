@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase } from './supabase'; 
 import { absoluteRedirect } from './urls';
 import type { User } from '@supabase/supabase-js';
 

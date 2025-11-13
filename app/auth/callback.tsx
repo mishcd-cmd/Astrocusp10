@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react'; 
 import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/utils/supabase';

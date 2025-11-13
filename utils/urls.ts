@@ -1,4 +1,4 @@
-const isBrowser = typeof window !== 'undefined';
+const isBrowser = typeof window !== 'undefined'; 
 
 // Prefer env (set this in prod), fallback to window on dev only
 export const SITE_URL =

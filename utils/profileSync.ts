@@ -1,4 +1,4 @@
-import { supabase } from '@/utils/supabase';
+import { supabase } from '@/utils/supabase'; 
 import { getCurrentUser } from '@/utils/auth';
 
 export async function syncStripeToSupabase(userId: string, email: string) {

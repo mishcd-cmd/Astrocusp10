@@ -1,4 +1,4 @@
-// components/AuthBootstrap.tsx
+// components/AuthBootstrap.tsx 
 import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
 import CosmicBackground from '@/components/CosmicBackground';

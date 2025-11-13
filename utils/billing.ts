@@ -1,4 +1,4 @@
-// project10/utils/billing.ts (only the getSubscriptionStatus export shown here)
+// project10/utils/billing.ts (only the getSubscriptionStatus export shown here) 
 // Keep your other exports (subscribeMonthly, etc.) as-is.
 
 import { supabase } from '@/utils/supabase';

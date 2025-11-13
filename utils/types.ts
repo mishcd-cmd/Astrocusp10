@@ -1,4 +1,4 @@
-import { CuspResult } from './astrology';
+import { CuspResult } from './astrology'; 
 
 export interface CuspDetail {
   name: string;

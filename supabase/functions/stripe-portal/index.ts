@@ -1,4 +1,4 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts"; 
 
 const ORIGIN_FALLBACK = "https://www.astrocusp.com.au";
 const STRIPE_SECRET = Deno.env.get("STRIPE_SECRET_KEY");

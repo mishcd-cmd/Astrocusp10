@@ -1,4 +1,4 @@
-// utils/horoscopeData.ts
+// utils/horoscopeData.ts 
 import { supabase } from './supabase';
 
 export type HoroscopeData = {

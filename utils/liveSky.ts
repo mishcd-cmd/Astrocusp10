@@ -1,4 +1,4 @@
-// utils/liveSky.ts
+// utils/liveSky.ts 
 //
 // Live sky events normalized for the Astrology screen.
 // - ISS flyovers via N2YO (if EXPO_PUBLIC_N2YO_API_KEY + coords available)

@@ -1,4 +1,4 @@
-import React from 'react';
+import React from 'react'; 
 import { View, Text, StyleSheet } from 'react-native';
 
 const ZODIAC_ICON: Record<string, string> = {

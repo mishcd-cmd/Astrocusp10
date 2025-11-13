@@ -1,4 +1,4 @@
-import { supabase } from '@/utils/supabase';
+import { supabase } from '@/utils/supabase'; 
 import { clearUserData } from '@/utils/userData';
 import { syncStripeToSupabase } from '@/utils/profileSync';
 
