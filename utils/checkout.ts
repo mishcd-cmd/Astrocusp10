@@ -1,4 +1,4 @@
-import { STRIPE_PRICE_CUSP_ONEOFF, STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY } from './stripeConfig'; 
+import { STRIPE_PRICE_CUSP_ONEOFF, STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY } from './stripeConfig';
 import { checkoutSubscription, checkoutOneTime } from './stripe';
 import { Platform } from 'react-native';
 import { SITE_URL } from './urls';

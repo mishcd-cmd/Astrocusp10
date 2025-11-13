@@ -1,6 +1,6 @@
 import { CuspDetail } from './types';
 
-// Gemstone data for pure signs
+// Gemstone data for pure signs 
 export const PURE_SIGN_GEMSTONES = [
   { sign: 'Capricorn', traditional: 'Garnet', alternative: 'Rose Quartz' },
   { sign: 'Aquarius', traditional: 'Amethyst', alternative: 'Amber' },

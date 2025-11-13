@@ -1,4 +1,4 @@
-// app/(tabs)/monthly-forecast.tsx 
+// app/(tabs)/monthly-forecast.tsx
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,

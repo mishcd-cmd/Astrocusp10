@@ -1,4 +1,4 @@
-import { supabase } from './supabase'; 
+import { supabase } from './supabase';
 
 // Admin function to clean up duplicate Mish profile
 export async function removeDuplicateMishProfile(): Promise<{ success: boolean; message: string }> {

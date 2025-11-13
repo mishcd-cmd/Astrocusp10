@@ -1,4 +1,4 @@
-// utils/lunar.ts 
+// utils/lunar.ts
 import SunCalc from 'suncalc';
 
 export type HemLabel = 'Northern' | 'Southern';

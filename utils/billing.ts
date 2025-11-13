@@ -1,70 +1,298 @@
-// project10/utils/billing.ts (only the getSubscriptionStatus export shown here) 
-// Keep your other exports (subscribeMonthly, etc.) as-is.
-
+// utils/billing.ts
 import { supabase } from '@/utils/supabase';
+import { checkoutSubscription, checkoutOneTime, isStripeConfigured } from './stripe';
+import { STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY, STRIPE_PRICE_ONEOFF } from './stripeConfig';
+import { SITE_URL } from './urls';
 
-const BASE =
-  process.env.EXPO_PUBLIC_SUPABASE_URL ||
-  process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-type SubStatus = {
+export type SubscriptionCheck = {
   active: boolean;
-  plan?: 'monthly' | 'yearly' | null;
+  reason?: string;                // 'no_session', 'edge_error', 'subscription_inactive', etc.
+  source?: 'db' | 'stripe' | 'edge' | 'override' | 'none';
+  status?: string;                // 'active', 'trialing', 'past_due', 'inactive', 'unknown'
+  plan?: 'monthly' | 'yearly';
+  price_id?: string | null;
+  current_period_end?: number | null;
   renewsAt?: string | null;
   customerId?: string | null;
-  price_id?: string | null;
-  status?: string;
-  email?: string | null;
-} | null;
+  isVip?: boolean;
+  // allow diagnostics or any extra props from the Edge Function
+  [key: string]: any;
+};
 
-export async function getSubscriptionStatus(): Promise<SubStatus> {
+const SPECIAL_ACCOUNTS = new Set<string>([
+  'mish.cd@gmail.com',
+  'petermaricar@bigpond.com',
+  'tsharna.kecek@gmail.com',
+  'james.summerton@outlook.com',
+  'xavier.cd@gmail.com',
+  'xaviercd96@gmail.com',
+  'adam.stead@techweave.co',       // ✅ VIP Account
+  'mish@fpanda.com.au',           // ✅ VIP Account
+  'michael.p.r.orourke@gmail.com', // ✅ VIP Account
+]);
+
+async function invokeStripeStatus(accessToken: string) {
+  return supabase.functions.invoke('stripe-status', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: {}, // no payload needed
+  });
+}
+
+/**
+ * Core subscription check. This is the raw shape, including diagnostics.
+ */
+export async function hasActiveSubscription(): Promise<SubscriptionCheck> {
   try {
-    if (!BASE) {
-      console.error('[billing] Missing Supabase URL config (EXPO_PUBLIC_SUPABASE_URL)');
-      return { active: false, status: 'error:missing_base' };
+    console.log('🔍 [billing] Starting subscription check...');
+
+    // 1) Ensure we have a session/token
+    const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
+    if (sessionErr) console.warn('[billing] getSession error:', sessionErr);
+    const accessToken = session?.access_token;
+    if (!accessToken) {
+      console.log('[billing] No session token, treating as not subscribed');
+      return { active: false, reason: 'no_session', source: 'none', status: 'unknown' };
     }
 
-    const { data, error } = await supabase.auth.getSession();
+    const userEmail = (session.user?.email ?? '').toLowerCase();
+
+    // 1a) Special account override (VIP fast path)
+    if (userEmail && SPECIAL_ACCOUNTS.has(userEmail)) {
+      console.log(`✅ [billing] Special account access granted: ${userEmail}`);
+      return {
+        active: true,
+        reason: 'special_account',
+        source: 'override',
+        status: 'active',
+        plan: 'yearly',
+        price_id: null,
+        current_period_end: null,
+        renewsAt: null,
+        customerId: `vip-${userEmail}`,
+        isVip: true,
+      };
+    }
+
+    console.log('[billing] Session found, checking subscription status…');
+
+    // 2) Call Edge Function (with a tiny retry if we ever hit a 401)
+    let { data, error } = await invokeStripeStatus(accessToken);
+
+    // If the function somehow 401s, try once more after refreshing the session
+    if (error && (error as any)?.status === 401) {
+      console.warn('[billing] stripe-status 401; retrying after session refresh…');
+      await supabase.auth.getSession(); // poke the client to ensure fresh token
+      const refreshedToken = (await supabase.auth.getSession()).data.session?.access_token ?? accessToken;
+      ({ data, error } = await invokeStripeStatus(refreshedToken));
+    }
+
     if (error) {
-      console.error('[billing] auth.getSession error', error);
-      return { active: false, status: 'error:no_session' };
-    }
-    const token = data?.session?.access_token;
-    if (!token) {
-      console.warn('[billing] No session token');
-      return { active: false, status: 'error:no_token' };
-    }
-
-    const url = `${BASE}/functions/v1/subscription-status`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      credentials: 'omit', // keep cross-origin clean
-      body: JSON.stringify({}),
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      console.error('[billing] subscription-status bad response', res.status, text);
-      return { active: false, status: `error:${res.status}` };
+      console.warn('[billing] stripe-status error:', error);
+      return {
+        active: false,
+        reason: 'edge_error',
+        source: 'edge',
+        status: 'unknown',
+        edge_error: (error as any)?.message ?? String(error),
+      };
     }
 
-    const json = await res.json().catch(() => ({}));
-    // Expecting the shape from the Edge Function
+    console.log('🔍 [billing] Stripe status response:', data);
+
+    // Normalise what the Edge Function returns into our shape
+    const raw = data || {};
+
+    const status =
+      raw.status ||
+      raw.subscription_status ||
+      'unknown';
+
+    const active =
+      raw.active === true ||
+      status === 'active' ||
+      status === 'trialing' ||
+      status === 'past_due';
+
+    const plan: 'monthly' | 'yearly' | undefined =
+      raw.plan ||
+      (raw.price_interval === 'month' ? 'monthly'
+        : raw.price_interval === 'year' ? 'yearly'
+        : undefined);
+
+    const price_id: string | null =
+      raw.price_id ??
+      raw.priceId ??
+      null;
+
+    const customerId: string | null =
+      raw.customer_id ??
+      raw.customerId ??
+      null;
+
+    const current_period_end: number | null =
+      typeof raw.current_period_end === 'number'
+        ? raw.current_period_end
+        : typeof raw.currentPeriodEnd === 'number'
+          ? raw.currentPeriodEnd
+          : null;
+
+    const renewsAt: string | null =
+      raw.renewsAt ??
+      (current_period_end
+        ? new Date(current_period_end * 1000).toISOString()
+        : null);
+
+    const isVip = !!raw.isVip;
+
     return {
-      active: !!json.active,
-      plan: json.plan ?? null,
-      renewsAt: json.renewsAt ?? null,
-      customerId: json.customerId ?? null,
-      price_id: json.price_id ?? null,
-      status: json.status ?? 'unknown',
-      email: json.email ?? null,
+      active,
+      source: raw.source ?? 'edge',
+      status,
+      plan,
+      price_id,
+      current_period_end,
+      renewsAt,
+      customerId,
+      isVip,
+      ...raw,
     };
   } catch (e: any) {
-    console.error('[billing] getSubscriptionStatus exception', e?.message || e);
-    return { active: false, status: 'error:exception' };
+    console.error('[billing] Status exception:', e?.message || e);
+    return { active: false, reason: 'billing_exception', source: 'none', status: 'unknown' };
+  }
+}
+
+/**
+ * Back-compat alias used across the app.
+ * Screens like app/subscription.tsx call this.
+ */
+export async function getSubscriptionStatus(): Promise<SubscriptionCheck> {
+  return hasActiveSubscription();
+}
+
+/* ---------- Checkout helpers ---------- */
+
+export async function subscribeMonthly(): Promise<void> {
+  console.log('=== SUBSCRIBE MONTHLY ===');
+  
+  // Check authentication first
+  const { getCurrentUser } = await import('./auth');
+  const authUser = await getCurrentUser();
+  
+  if (!authUser) {
+    throw new Error('Please sign in to subscribe');
+  }
+  
+  console.log('User authenticated for monthly subscription:', authUser.email);
+  
+  // Check Stripe configuration first
+  if (!isStripeConfigured()) {
+    throw new Error('Payment system not configured. Please contact support.');
+  }
+  
+  if (!STRIPE_PRICE_MONTHLY) throw new Error('Monthly subscription not configured');
+  
+  console.log('Monthly price ID:', STRIPE_PRICE_MONTHLY);
+
+  const siteUrl = SITE_URL;
+  const successUrl = `${siteUrl}/auth/success?type=subscription`;
+  const cancelUrl = `${siteUrl}/(tabs)/settings`;
+  
+  console.log('Checkout URLs:', { successUrl, cancelUrl });
+
+  await checkoutSubscription({
+    priceId: STRIPE_PRICE_MONTHLY,
+    successUrl,
+    cancelUrl,
+  });
+}
+
+export async function subscribeYearly(): Promise<void> {
+  console.log('=== SUBSCRIBE YEARLY ===');
+  
+  // Check authentication first
+  const { getCurrentUser } = await import('./auth');
+  const authUser = await getCurrentUser();
+  
+  if (!authUser) {
+    throw new Error('Please sign in to subscribe');
+  }
+  
+  console.log('User authenticated for yearly subscription:', authUser.email);
+  
+  // Check Stripe configuration first
+  if (!isStripeConfigured()) {
+    throw new Error('Payment system not configured. Please contact support.');
+  }
+  
+  if (!STRIPE_PRICE_YEARLY) throw new Error('Yearly subscription not configured');
+
+  const siteUrl = SITE_URL;
+  await checkoutSubscription({
+    priceId: STRIPE_PRICE_YEARLY,
+    successUrl: `${siteUrl}/auth/success?type=subscription`,
+    cancelUrl: `${siteUrl}/(tabs)/settings`,
+  });
+}
+
+export async function buyOneOffReading(): Promise<void> {
+  console.log('=== BUY ONE-OFF READING ===');
+  
+  // Check authentication first
+  const { getCurrentUser } = await import('./auth');
+  const authUser = await getCurrentUser();
+  
+  if (!authUser) {
+    throw new Error('Please sign in to purchase');
+  }
+  
+  console.log('User authenticated for one-off purchase:', authUser.email);
+  
+  // Check Stripe configuration first
+  if (!isStripeConfigured()) {
+    throw new Error('Payment system not configured. Please contact support.');
+  }
+  
+  if (!STRIPE_PRICE_ONEOFF) throw new Error('One-off reading not configured');
+
+  const siteUrl = SITE_URL;
+  await checkoutOneTime({
+    priceId: STRIPE_PRICE_ONEOFF,
+    successUrl: `${siteUrl}/auth/success?type=oneoff`,
+    cancelUrl: `${siteUrl}/(tabs)/settings`,
+  });
+}
+
+export async function upgradeToYearly(): Promise<{ message: string }> {
+  console.log('=== UPGRADE TO YEARLY ===');
+  await subscribeYearly();
+  return { message: 'Redirecting to yearly subscription checkout...' };
+}
+
+/**
+ * Legacy helper – still here in case other parts of the app call it.
+ * For web, this uses the Supabase function directly.
+ * (Your newer openBillingPortal helper can be used instead from screens.)
+ */
+export async function openStripePortal(): Promise<void> {
+  console.log('=== OPEN STRIPE PORTAL ===');
+  const siteUrl = SITE_URL;
+  const { data, error } = await supabase.functions.invoke('stripe-portal', {
+    body: { returnUrl: `${siteUrl}/settings/subscription` },
+  });
+  if (error) throw new Error(error.message || 'Failed to open billing portal');
+
+  const url: string | undefined = (data as any)?.url;
+  if (!url) throw new Error('No portal URL returned');
+
+  if (typeof window !== 'undefined') {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  } else {
+    const Linking = await import('expo-linking');
+    await Linking.openURL(url);
   }
 }
