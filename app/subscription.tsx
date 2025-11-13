@@ -1,3 +1,5 @@
+// app/settings/subscription.tsx
+
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -23,32 +25,38 @@ import {
   getSubscriptionStatus,
 } from '@/utils/billing';
 
+// This matches what billing.ts returns (SubscriptionCheck)
 type SubStatus = {
   active: boolean;
   plan?: 'monthly' | 'yearly';
-  renewsAt?: string;
-  customerId?: string;
-  price_id?: string;
+  renewsAt?: string | null;
+  customerId?: string | null;
+  price_id?: string | null;
   status?: string;
+  isVip?: boolean;
 } | null;
 
 export default function SubscriptionScreen() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<SubStatus>(null);
-  const [actionLoading, setActionLoading] = useState<null | 'portal' | 'upgrade' | 'monthly' | 'yearly' | 'one-off'>(null);
+  const [actionLoading, setActionLoading] = useState<
+    null | 'portal' | 'upgrade' | 'monthly' | 'yearly' | 'one-off'
+  >(null);
 
   const refreshStatus = useCallback(async () => {
-    const s = await getSubscriptionStatus();
-    setStatus(s);
+    try {
+      const s = await getSubscriptionStatus();
+      setStatus(s);
+    } catch (e) {
+      console.error('[subscription] status error', e);
+      Alert.alert('Error', 'Could not fetch subscription status.');
+    }
   }, []);
 
   useEffect(() => {
     (async () => {
       try {
         await refreshStatus();
-      } catch (e) {
-        console.error('[subscription] status error', e);
-        Alert.alert('Error', 'Could not fetch subscription status.');
       } finally {
         setLoading(false);
       }
@@ -58,7 +66,7 @@ export default function SubscriptionScreen() {
   const handleGoBack = () => {
     try {
       console.log('[subscription] Back button clicked');
-      
+
       if (router.canGoBack()) {
         console.log('[subscription] Using router.back()');
         router.back();
@@ -68,7 +76,6 @@ export default function SubscriptionScreen() {
       }
     } catch (error: any) {
       console.error('[subscription] Back button error:', error);
-      // Fallback navigation
       try {
         router.replace('/(tabs)/settings');
       } catch (fallbackError) {
@@ -106,23 +113,13 @@ export default function SubscriptionScreen() {
   const onSubscribeMonthly = async () => {
     try {
       console.log('[subscription] Monthly button clicked - starting process...');
-      
-      // Show loading state immediately
       setActionLoading('monthly');
-      
-      // Add small delay to show loading state
       await new Promise(resolve => setTimeout(resolve, 200));
-      
-      console.log('[subscription] Starting monthly subscription...');
-      
       await subscribeMonthly();
-      
     } catch (e: any) {
       console.error('[subscription] monthly error', e);
-      
-      // More specific error messages
       let errorMessage = 'Unable to start subscription. ';
-      
+
       if (e?.message?.includes('network') || e?.message?.includes('fetch')) {
         errorMessage += 'Please check your internet connection and try again.';
       } else if (e?.message?.includes('authentication') || e?.message?.includes('auth')) {
@@ -132,7 +129,7 @@ export default function SubscriptionScreen() {
       } else {
         errorMessage += e?.message || 'Please try again.';
       }
-      
+
       Alert.alert('Subscription Failed', errorMessage);
     } finally {
       setActionLoading(null);
@@ -143,14 +140,14 @@ export default function SubscriptionScreen() {
     try {
       console.log('[subscription] Starting yearly subscription...');
       setActionLoading('yearly');
-      
-      // Add delay to show loading state
       await new Promise(resolve => setTimeout(resolve, 200));
-      
       await subscribeYearly();
     } catch (e: any) {
       console.error('[subscription] yearly error', e);
-      Alert.alert('Subscription Failed', e?.message || 'Unable to start subscription. Please check your connection and try again.');
+      Alert.alert(
+        'Subscription Failed',
+        e?.message || 'Unable to start subscription. Please check your connection and try again.'
+      );
     } finally {
       setActionLoading(null);
     }
@@ -160,10 +157,7 @@ export default function SubscriptionScreen() {
     try {
       console.log('[subscription] One-off button clicked - starting process...');
       setActionLoading('one-off');
-      
-      // Add delay to show loading state
       await new Promise(resolve => setTimeout(resolve, 200));
-      
       await buyOneOffReading();
     } catch (e: any) {
       console.error('[subscription] one-off error', e);
@@ -232,7 +226,7 @@ export default function SubscriptionScreen() {
                   )}
                   {status?.renewsAt && (
                     <Text style={styles.renewalDate}>
-                      Renews:{' '}
+                      Renews{' '}
                       {new Date(status.renewsAt).toLocaleDateString('en-GB', {
                         year: 'numeric',
                         month: 'long',
@@ -260,7 +254,7 @@ export default function SubscriptionScreen() {
                 <>
                   <Text style={styles.statusInactive}>No active subscription</Text>
                   <Text style={styles.statusDescription}>
-                    Subscribe to unlock deeper cosmic insights and personalized guidance
+                    Subscribe to unlock deeper cosmic insights and personalised guidance.
                   </Text>
                 </>
               )}
@@ -321,7 +315,7 @@ export default function SubscriptionScreen() {
                 </View>
                 <Text style={styles.vipDescription}>
                   You have complimentary access to all Astral Plane features. 
-                  Thank you for being part of the Astro Cusp community! ✨
+                  Thank you for being part of the Astro Cusp community.
                 </Text>
               </LinearGradient>
             )}
@@ -341,15 +335,28 @@ export default function SubscriptionScreen() {
                   </View>
                   <Text style={styles.planPrice}>$8.00 AUD / month</Text>
                   <Text style={styles.planDescription}>
-                    Full access to all premium features with monthly billing
+                    Full access to all premium features with monthly billing.
                   </Text>
                   <TouchableOpacity
-                    style={[styles.actionButton, styles.subscribeButton, isVip && styles.disabledButton]}
+                    style={[
+                      styles.actionButton,
+                      styles.subscribeButton,
+                      isVip && styles.disabledButton,
+                    ]}
                     onPress={onSubscribeMonthly}
                     disabled={actionLoading !== null || isVip}
                   >
-                    <Text style={[styles.subscribeButtonText, isVip && styles.disabledButtonText]}>
-                      {isVip ? 'VIP Access Active' : actionLoading === 'monthly' ? 'Processing…' : 'Start Monthly'}
+                    <Text
+                      style={[
+                        styles.subscribeButtonText,
+                        isVip && styles.disabledButtonText,
+                      ]}
+                    >
+                      {isVip
+                        ? 'VIP Access Active'
+                        : actionLoading === 'monthly'
+                        ? 'Processing…'
+                        : 'Start Monthly'}
                     </Text>
                   </TouchableOpacity>
                 </LinearGradient>
@@ -368,15 +375,28 @@ export default function SubscriptionScreen() {
                   <Text style={styles.planPrice}>$88.00 AUD / year</Text>
                   <Text style={styles.planEquivalent}>Only $7.33 per month</Text>
                   <Text style={styles.planDescription}>
-                    Full access to all premium features with yearly savings
+                    Full access to all premium features with yearly savings.
                   </Text>
                   <TouchableOpacity
-                    style={[styles.actionButton, styles.subscribeButton, isVip && styles.disabledButton]}
+                    style={[
+                      styles.actionButton,
+                      styles.subscribeButton,
+                      isVip && styles.disabledButton,
+                    ]}
                     onPress={onSubscribeYearly}
                     disabled={actionLoading !== null || isVip}
                   >
-                    <Text style={[styles.subscribeButtonText, isVip && styles.disabledButtonText]}>
-                      {isVip ? 'VIP Access Active' : actionLoading === 'yearly' ? 'Processing…' : 'Start Yearly'}
+                    <Text
+                      style={[
+                        styles.subscribeButtonText,
+                        isVip && styles.disabledButtonText,
+                      ]}
+                    >
+                      {isVip
+                        ? 'VIP Access Active'
+                        : actionLoading === 'yearly'
+                        ? 'Processing…'
+                        : 'Start Yearly'}
                     </Text>
                   </TouchableOpacity>
                 </LinearGradient>
@@ -395,24 +415,39 @@ export default function SubscriptionScreen() {
 
               <Text style={styles.oneOffPrice}>$360.00 AUD</Text>
               <Text style={styles.oneOffDescription}>
-                Get a comprehensive one-time cusp analysis with detailed insights, birthstone guidance,
-                personalized cosmic profile, and a copy of the AstroCusp ebook containing all cusp 
-                personalities without a subscription.
+                Get a comprehensive one-time cusp analysis with detailed insights,
+                birthstone guidance, personalised cosmic profile, and a copy of the
+                AstroCusp ebook containing all cusp personalities, without a subscription.
               </Text>
 
               <TouchableOpacity
-                style={[styles.actionButton, styles.oneOffButton, isVip && styles.disabledButton]}
+                style={[
+                  styles.actionButton,
+                  styles.oneOffButton,
+                  isVip && styles.disabledButton,
+                ]}
                 onPress={onBuyOneOff}
                 disabled={actionLoading !== null || isVip}
               >
                 <Eye size={16} color="#1a1a2e" />
-                <Text style={[styles.oneOffButtonText, isVip && styles.disabledButtonText]}>
-                  {isVip ? 'VIP Access Active' : actionLoading === 'one-off' ? 'Processing…' : 'Purchase Reading'}
+                <Text
+                  style={[
+                    styles.oneOffButtonText,
+                    isVip && styles.disabledButtonText,
+                  ]}
+                >
+                  {isVip
+                    ? 'VIP Access Active'
+                    : actionLoading === 'one-off'
+                    ? 'Processing…'
+                    : 'Purchase Reading'}
                 </Text>
               </TouchableOpacity>
 
               <Text style={styles.oneOffNote}>
-                {isVip ? 'You already have VIP access to all features' : 'Perfect for exploring cusp astrology without a subscription commitment'}
+                {isVip
+                  ? 'You already have VIP access to all features.'
+                  : 'Perfect for exploring cusp astrology without a subscription commitment.'}
               </Text>
             </LinearGradient>
 
@@ -437,25 +472,75 @@ const styles = StyleSheet.create({
   backButton: { flexDirection: 'row', alignItems: 'center', paddingTop: 20, paddingBottom: 10 },
   backText: { fontSize: 16, fontFamily: 'Inter-Medium', color: '#8b9dc3', marginLeft: 8 },
   content: { flex: 1, paddingTop: 20 },
-  title: { fontSize: 36, fontFamily: 'PlayfairDisplay-Bold', color: '#e8e8e8', textAlign: 'center', marginBottom: 8, letterSpacing: 2 },
-  subtitle: { fontSize: 16, fontFamily: 'Inter-Regular', color: '#8b9dc3', textAlign: 'center', marginBottom: 32, lineHeight: 24 },
+  title: {
+    fontSize: 36,
+    fontFamily: 'PlayfairDisplay-Bold',
+    color: '#e8e8e8',
+    textAlign: 'center',
+    marginBottom: 8,
+    letterSpacing: 2,
+  },
+  subtitle: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#8b9dc3',
+    textAlign: 'center',
+    marginBottom: 32,
+    lineHeight: 24,
+  },
 
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { fontSize: 16, fontFamily: 'Inter-Regular', color: '#8b9dc3', marginTop: 12 },
 
-  statusCard: { borderRadius: 16, padding: 24, marginBottom: 24, borderWidth: 1, borderColor: 'rgba(139, 157, 195, 0.3)' },
+  statusCard: {
+    borderRadius: 16,
+    padding: 24,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 157, 195, 0.3)',
+  },
   statusHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   statusTitle: { fontSize: 20, fontFamily: 'PlayfairDisplay-Bold', color: '#e8e8e8', marginLeft: 12 },
-  statusActive: { fontSize: 18, fontFamily: 'Inter-SemiBold', color: '#8bc34a', textAlign: 'center', marginBottom: 8 },
-  statusInactive: { fontSize: 18, fontFamily: 'Inter-SemiBold', color: '#8b9dc3', textAlign: 'center', marginBottom: 8 },
-  statusDescription: { fontSize: 14, fontFamily: 'Inter-Regular', color: '#8b9dc3', textAlign: 'center', lineHeight: 20 },
-  renewalDate: { fontSize: 14, fontFamily: 'Inter-Regular', color: '#8b9dc3', textAlign: 'center', marginBottom: 16 },
+  statusActive: {
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
+    color: '#8bc34a',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  statusInactive: {
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
+    color: '#8b9dc3',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  statusDescription: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: '#8b9dc3',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  renewalDate: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: '#8b9dc3',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
 
   activeFeatures: { gap: 8, marginTop: 8 },
   featureItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
   featureText: { fontSize: 14, fontFamily: 'Inter-Medium', color: '#e8e8e8', marginLeft: 8 },
 
-  managementCard: { borderRadius: 16, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: 'rgba(212, 175, 55, 0.3)' },
+  managementCard: {
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.3)',
+  },
   managementHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
   managementTitle: { fontSize: 18, fontFamily: 'Inter-SemiBold', color: '#d4af37', marginLeft: 12 },
   buttonRow: { flexDirection: 'row', gap: 12, marginBottom: 12, flexWrap: 'wrap' },
@@ -472,53 +557,127 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 120,
   },
-  portalButton: { backgroundColor: 'rgba(139, 157, 195, 0.2)', borderWidth: 1, borderColor: 'rgba(139, 157, 195, 0.4)' },
+  portalButton: {
+    backgroundColor: 'rgba(139, 157, 195, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 157, 195, 0.4)',
+  },
   portalButtonText: { color: '#8b9dc3', fontFamily: 'Inter-Medium', fontSize: 14 },
   upgradeButton: { backgroundColor: '#d4af37' },
   upgradeButtonText: { color: '#1a1a2e', fontFamily: 'Inter-SemiBold', fontSize: 14 },
-  managementNote: { fontSize: 12, fontFamily: 'Inter-Regular', color: '#8b9dc3', textAlign: 'center', lineHeight: 16, fontStyle: 'italic' },
+  managementNote: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#8b9dc3',
+    textAlign: 'center',
+    lineHeight: 16,
+    fontStyle: 'italic',
+  },
 
   subscriptionOptions: { marginBottom: 24 },
-  optionsTitle: { fontSize: 22, fontFamily: 'PlayfairDisplay-Bold', color: '#e8e8e8', textAlign: 'center', marginBottom: 20 },
+  optionsTitle: {
+    fontSize: 22,
+    fontFamily: 'PlayfairDisplay-Bold',
+    color: '#e8e8e8',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
 
-  planCard: { borderRadius: 16, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: 'rgba(212, 175, 55, 0.3)' },
+  planCard: {
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.3)',
+  },
   yearlyPlanCard: { borderWidth: 2, borderColor: 'rgba(212, 175, 55, 0.5)' },
   planHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   planName: { fontSize: 18, fontFamily: 'Inter-SemiBold', color: '#e8e8e8', marginLeft: 12, flex: 1 },
-  savingsBadge: { backgroundColor: '#8bc34a', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4 },
+  savingsBadge: {
+    backgroundColor: '#8bc34a',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
   savingsText: { fontSize: 12, fontFamily: 'Inter-SemiBold', color: '#1a1a2e' },
-  planPrice: { fontSize: 24, fontFamily: 'PlayfairDisplay-Bold', color: '#d4af37', textAlign: 'center', marginBottom: 4 },
-  planEquivalent: { fontSize: 14, fontFamily: 'Inter-Medium', color: '#8bc34a', textAlign: 'center', marginBottom: 8 },
-  planDescription: { fontSize: 14, fontFamily: 'Inter-Regular', color: '#8b9dc3', textAlign: 'center', lineHeight: 20, marginBottom: 16 },
+  planPrice: {
+    fontSize: 24,
+    fontFamily: 'PlayfairDisplay-Bold',
+    color: '#d4af37',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  planEquivalent: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: '#8bc34a',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  planDescription: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: '#8b9dc3',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 16,
+  },
   subscribeButton: { backgroundColor: '#d4af37' },
   subscribeButtonText: { color: '#1a1a2e', fontFamily: 'Inter-SemiBold', fontSize: 16 },
 
-  oneOffCard: { borderRadius: 16, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: 'rgba(139, 157, 195, 0.3)' },
+  oneOffCard: {
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 157, 195, 0.3)',
+  },
   oneOffHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
   oneOffTitle: { fontSize: 18, fontFamily: 'Inter-SemiBold', color: '#8b9dc3', marginLeft: 12 },
-  oneOffPrice: { fontSize: 28, fontFamily: 'PlayfairDisplay-Bold', color: '#8b9dc3', textAlign: 'center', marginBottom: 8 },
-  oneOffDescription: { fontSize: 14, fontFamily: 'Inter-Regular', color: '#e8e8e8', textAlign: 'center', lineHeight: 20, marginBottom: 16 },
+  oneOffPrice: {
+    fontSize: 28,
+    fontFamily: 'PlayfairDisplay-Bold',
+    color: '#8b9dc3',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  oneOffDescription: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: '#e8e8e8',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 16,
+  },
   oneOffButton: { backgroundColor: '#8b9dc3', marginBottom: 12 },
   oneOffButtonText: { color: '#1a1a2e', fontFamily: 'Inter-SemiBold', fontSize: 16 },
-  oneOffNote: { fontSize: 12, fontFamily: 'Inter-Regular', color: '#8b9dc3', textAlign: 'center', lineHeight: 16, fontStyle: 'italic' },
-
-  featuresSection: { marginTop: 16 },
-  featuresTitle: { fontSize: 20, fontFamily: 'PlayfairDisplay-Bold', color: '#e8e8e8', textAlign: 'center', marginBottom: 16 },
-  featuresList: {
-    backgroundColor: 'rgba(26, 26, 46, 0.4)',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(139, 157, 195, 0.2)',
-    gap: 8,
+  oneOffNote: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#8b9dc3',
+    textAlign: 'center',
+    lineHeight: 16,
+    fontStyle: 'italic',
   },
-  featureRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
 
   loadingOverlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(26, 26, 46, 0.8)', alignItems: 'center', justifyContent: 'center', borderRadius: 16,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(26, 26, 46, 0.8)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 16,
   },
-  loadingActionText: { fontSize: 16, fontFamily: 'Inter-Regular', color: '#8b9dc3', marginTop: 12 },
+  loadingActionText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#8b9dc3',
+    marginTop: 12,
+  },
+
   vipBadge: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
@@ -533,12 +692,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'rgba(212, 175, 55, 0.5)',
   },
-  vipHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
+  vipHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   vipTitle: {
     fontSize: 20,
     fontFamily: 'PlayfairDisplay-Bold',
@@ -552,6 +706,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 24,
   },
+
   disabledButton: {
     opacity: 0.5,
     backgroundColor: '#4a4a4a',
