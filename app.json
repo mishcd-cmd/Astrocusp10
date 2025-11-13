@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Astrocusp",
+    "slug": "astro-cusp",
+    "scheme": "astrocusp",
+    "icon": "./assets/images/icon.png",
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f1121"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#0f1121"
+      }
+    },
+    "ios": {
+      "icon": "./assets/images/icon.png"
+    },
+    "web": {
+      "favicon": "./assets/images/icon.png",
+      "bundler": "metro"
+    }
+  }
+}
