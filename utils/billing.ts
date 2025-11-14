@@ -34,9 +34,9 @@ const SPECIAL_ACCOUNTS = new Set<string>([
   'james.summerton@outlook.com',
   'xavier.cd@gmail.com',
   'xaviercd96@gmail.com',
-  'adam.stead@techweave.co', // ✅ VIP Account
-  'mish@fpanda.com.au', // ✅ VIP Account
-  'michael.p.r.orourke@gmail.com', // ✅ VIP Account
+  'adam.stead@techweave.co', // VIP Account
+  'mish@fpanda.com.au', // VIP Account
+  'michael.p.r.orourke@gmail.com', // VIP Account
 ]);
 
 async function invokeStripeStatus(accessToken: string) {
@@ -57,7 +57,7 @@ export async function hasActiveSubscription(): Promise<SubscriptionCheck> {
   try {
     console.log('🔍 [billing] Starting subscription check...');
 
-    // 1) Ensure we have a session/token
+    // 1) Ensure we have a session or token
     const {
       data: { session },
       error: sessionErr,
@@ -98,7 +98,7 @@ export async function hasActiveSubscription(): Promise<SubscriptionCheck> {
     // 2) Call Edge Function (with a tiny retry if we ever hit a 401)
     let { data, error } = await invokeStripeStatus(accessToken);
 
-    // If the function somehow 401s, try once more after refreshing the session
+    // If the function 401s, try once more after refreshing the session
     if (error && (error as any)?.status === 401) {
       console.warn(
         '[billing] stripe-status 401; retrying after session refresh…',
@@ -189,7 +189,7 @@ export async function hasActiveSubscription(): Promise<SubscriptionCheck> {
 }
 
 /**
- * Back-compat alias used across the app.
+ * Back compat alias used across the app.
  * Screens like app/settings/subscription.tsx call this.
  */
 export async function getSubscriptionStatus(): Promise<SubscriptionCheck> {
@@ -219,15 +219,16 @@ export async function subscribeMonthly(): Promise<void> {
     throw new Error('Payment system not configured. Please contact support.');
   }
 
-  if (!STRIPE_PRICE_MONTHLY)
+  if (!STRIPE_PRICE_MONTHLY) {
     throw new Error('Monthly subscription not configured');
+  }
 
   console.log('Monthly price ID:', STRIPE_PRICE_MONTHLY);
 
   const siteUrl = SITE_URL;
 
-  // ✅ Important: use clean, real web paths (no (tabs) group in URL)
-  const successUrl = `${siteUrl}/`; // app/index.tsx redirects / → Daily Astrology
+  // Use clean, real web paths (no (tabs) group in URL)
+  const successUrl = `${siteUrl}/`; // app/index.tsx redirects / to Daily Astrology
   const cancelUrl = `${siteUrl}/settings`; // Settings tab
 
   console.log('Checkout URLs (monthly):', { successUrl, cancelUrl });
@@ -260,8 +261,9 @@ export async function subscribeYearly(): Promise<void> {
     throw new Error('Payment system not configured. Please contact support.');
   }
 
-  if (!STRIPE_PRICE_YEARLY)
+  if (!STRIPE_PRICE_YEARLY) {
     throw new Error('Yearly subscription not configured');
+  }
 
   const siteUrl = SITE_URL;
 
@@ -298,8 +300,9 @@ export async function buyOneOffReading(): Promise<void> {
     throw new Error('Payment system not configured. Please contact support.');
   }
 
-  if (!STRIPE_PRICE_ONEOFF)
+  if (!STRIPE_PRICE_ONEOFF) {
     throw new Error('One-off reading not configured');
+  }
 
   const siteUrl = SITE_URL;
 
@@ -322,7 +325,9 @@ export async function upgradeToYearly(): Promise<{ message: string }> {
 }
 
 /**
- * Billing portal – already using a new tab on web so the app stays alive.
+ * Billing portal helper.
+ * Web: navigate the same tab to Stripe (mobile friendly).
+ * Native: open via Linking.
  */
 export async function openStripePortal(): Promise<void> {
   console.log('=== OPEN STRIPE PORTAL ===');
@@ -332,18 +337,25 @@ export async function openStripePortal(): Promise<void> {
     body: { returnUrl: `${siteUrl}/settings/subscription` },
   });
 
-  if (error)
+  if (error) {
+    console.error('[billing] stripe-portal error:', error);
     throw new Error(error.message || 'Failed to open billing portal');
+  }
 
   const url: string | undefined = (data as any)?.url;
-  if (!url) throw new Error('No portal URL returned');
+  if (!url) {
+    console.error('[billing] No portal URL returned from stripe-portal');
+    throw new Error('No portal URL returned');
+  }
 
   if (typeof window !== 'undefined') {
-    // Web: open in a new tab so your app stays mounted
-    window.open(url, '_blank', 'noopener,noreferrer');
+    // Web: navigate same tab so mobile browsers do not block it
+    console.log('[billing] Navigating browser to Stripe portal:', url);
+    window.location.href = url;
   } else {
-    // Native: use deep link
+    // Native app: use deep link
     const Linking = await import('expo-linking');
+    console.log('[billing] Opening Stripe portal via Linking in native app');
     await Linking.openURL(url);
   }
 }
