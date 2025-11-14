@@ -51,7 +51,7 @@ const storage = {
     if (typeof window !== 'undefined' && window.localStorage) {
       keys.forEach(key => window.localStorage.removeItem(key));
     }
-  }
+  },
 };
 
 // Export for manual cache clearing
@@ -121,7 +121,7 @@ function computeCuspFallback(birthDate?: string): CuspResult | null {
       const [endDay, endMonth] = endDate.split('/').map(Number);
       
       if (startMonth > endMonth) {
-        // Crosses year boundary (like Dec-Jan)
+        // Crosses year boundary, for completeness
         return (month === startMonth && day >= startDay) || (month === endMonth && day <= endDay);
       } else {
         // Same month range
@@ -154,7 +154,7 @@ function computeCuspFallback(birthDate?: string): CuspResult | null {
       year,
       month,
       day,
-      originalString: birthDate
+      originalString: birthDate,
     });
     return {
       isOnCusp: false,
@@ -168,22 +168,38 @@ function computeCuspFallback(birthDate?: string): CuspResult | null {
   }
 }
 
+// Purge any email-scoped monthly caches (simple implementation)
+async function purgeUserCache(email: string): Promise<void> {
+  try {
+    const keys = await storage.getAllKeys();
+    const lower = email.toLowerCase();
+    const prefix = `@astro_cusp_monthly_${lower}`;
+    const toRemove = keys.filter(k => k.toLowerCase().startsWith(prefix));
+    if (toRemove.length) {
+      await storage.multiRemove(toRemove);
+      console.log('🧹 [userData] purgeUserCache removed', toRemove.length, 'keys for', email);
+    }
+  } catch (e) {
+    console.warn('⚠️ [userData] purgeUserCache error:', e);
+  }
+}
+
 // Clean up any incomplete/corrupted cache
 export async function healUserCache(): Promise<void> {
   try {
     // Clear any stale auth data that might cause token errors
     await clearLocalAuthData();
-    
-    const raw = await AsyncStorage.getItem(USER_DATA_KEY);
+
+    const raw = await storage.getItem(USER_DATA_KEY);
     if (!raw) return;
     const profile = JSON.parse(raw);
     if (!profile?.cuspResult) {
       console.log('🔧 [userData] Removing incomplete cached profile');
-      await AsyncStorage.removeItem(USER_DATA_KEY);
+      await storage.removeItem(USER_DATA_KEY);
     }
   } catch {
     console.log('🔧 [userData] Clearing corrupted cache');
-    await AsyncStorage.removeItem(USER_DATA_KEY);
+    await storage.removeItem(USER_DATA_KEY);
   }
 }
 
@@ -207,7 +223,7 @@ export async function saveUserData(userData: UserProfile): Promise<void> {
         birthLocation: userData.birthLocation,
         hemisphere: userData.hemisphere,
         hasCuspResult: !!userData.cuspResult,
-        cuspResultDetails: userData.cuspResult
+        cuspResultDetails: userData.cuspResult,
       });
     }
 
@@ -229,17 +245,19 @@ export async function saveUserData(userData: UserProfile): Promise<void> {
 
     const dataToSave: UserProfile = {
       ...userData,
-      lastLoginAt: new Date().toISOString(),
+      createdAt: userData.createdAt || new Date().toISOString(),
+      lastLoginAt: userData.lastLoginAt || new Date().toISOString(),
     };
 
-    // Get current user to ensure we're saving to the right cache
+    // Get current user to ensure we are saving to the right cache and row
     const { data: { user } } = await supabase.auth.getUser();
+
     if (user) {
       if (isPeter) {
         console.log('🔍 [PETER DEBUG] Auth user found:', {
           userId: user.id,
           email: user.email,
-          userCacheKey: `${USER_DATA_KEY}:${user.id}`
+          userCacheKey: `${USER_DATA_KEY}:${user.id}`,
         });
       }
       
@@ -253,25 +271,60 @@ export async function saveUserData(userData: UserProfile): Promise<void> {
         console.log('🔍 [PETER DEBUG] Cache save verification:', {
           saved: !!verification,
           dataLength: verification?.length,
-          canParse: verification ? (() => {
-            try { JSON.parse(verification); return true; } catch { return false; }
-          })() : false
+          canParse: verification
+            ? (() => {
+                try {
+                  JSON.parse(verification);
+                  return true;
+                } catch {
+                  return false;
+                }
+              })()
+            : false,
         });
       }
+
+      console.log('✅ [userData] Saved to local cache');
+
+      // Upsert into Supabase user_profiles so Cosmic Profile and other screens see it
+      const { error: upsertError } = await supabase
+        .from('user_profiles')
+        .upsert(
+          {
+            user_id: user.id,
+            email: dataToSave.email,
+            name: dataToSave.name,
+            birth_date: dataToSave.birthDate,
+            birth_time: dataToSave.birthTime,
+            birth_location: dataToSave.birthLocation,
+            hemisphere: dataToSave.hemisphere,
+            cusp_result: dataToSave.cuspResult, // JSON column
+            created_at: dataToSave.createdAt,
+            last_login_at: dataToSave.lastLoginAt,
+          },
+          { onConflict: 'user_id' }
+        );
+
+      if (upsertError) {
+        console.error('❌ [userData] Supabase upsert error:', upsertError);
+        throw new Error('Failed to save profile in database');
+      }
+
+      console.log('✅ [userData] Profile upserted to Supabase for', dataToSave.email);
     } else {
       // Fallback for anonymous users
       await storage.setItem(USER_DATA_KEY, JSON.stringify(dataToSave));
+      console.log('✅ [userData] Saved anonymous profile to local cache (no auth user)');
     }
-    console.log('✅ [userData] Saved to AsyncStorage');
 
-    // 🔧 clear any legacy email-scoped caches
+    // Clear any legacy email-scoped caches
     if (userData.email) {
       await purgeUserCache(userData.email);
       console.log('🧹 [userData] Purged monthly caches for', userData.email);
     }
     
     console.log('✅ [userData] saveUserData completed - cache will refresh on next fetch');
-  } catch (err) {
+  } catch (err: any) {
     console.error('❌ [userData] Error saving user data:', err);
     
     // PETER DEBUG: Extra error details
@@ -279,8 +332,8 @@ export async function saveUserData(userData: UserProfile): Promise<void> {
       console.error('🔍 [PETER DEBUG] Save failed with details:', {
         errorMessage: err?.message,
         errorStack: err?.stack,
-        userData: userData,
-        timestamp: new Date().toISOString()
+        userData,
+        timestamp: new Date().toISOString(),
       });
     }
     
@@ -335,7 +388,7 @@ export async function getUserData(forceFresh = false): Promise<UserProfile | nul
     console.error('❌ [userData] SECURITY: Profile email mismatch!', {
       profileEmail: profile.email,
       authEmail: user.email,
-      userId: user.id
+      userId: user.id,
     });
     return null;
   }
@@ -370,7 +423,7 @@ export async function getUserData(forceFresh = false): Promise<UserProfile | nul
         needsRecalc: true,
       };
       
-      // Don't cache invalid profile
+      // Do not cache invalid profile
       return userProfile;
     }
   } catch (e) {
@@ -396,7 +449,7 @@ export async function getUserData(forceFresh = false): Promise<UserProfile | nul
     isOnCusp: cuspResult.isOnCusp,
     cuspName: cuspResult.cuspName,
     primarySign: cuspResult.primarySign,
-    hemisphere: profile.hemisphere
+    hemisphere: profile.hemisphere,
   });
 
   const userProfile: UserProfile = {
@@ -448,7 +501,7 @@ export async function clearUserData(): Promise<void> {
         console.log('🧹 [clearUserData] Cleared user-specific cache for:', user.email);
       }
     } catch (authError: any) {
-      // Only clear all caches if it's a critical auth error, not session refresh
+      // Only clear all caches if it is a critical auth error, not session refresh
       console.log('🧹 [clearUserData] Auth check failed, clearing legacy cache only');
       await storage.removeItem(USER_DATA_KEY);
     }

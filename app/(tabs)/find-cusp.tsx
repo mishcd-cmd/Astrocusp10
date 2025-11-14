@@ -25,8 +25,8 @@ import CuspLogo from '@/components/CuspLogo';
 import { calculateCusp, type BirthInfo, type CuspResult } from '@/utils/astrology';
 import { getAstronomicalInsight } from '@/utils/astronomy';
 import { getBirthstoneForSign } from '@/utils/birthstones';
-import { saveCosmicProfileEdits, type EditableProfile } from '@/utils/userProfile';
-import { getUserData } from '@/utils/userData';
+import { supabase } from '@/utils/supabase';
+import { getUserData, saveUserData, type UserProfile } from '@/utils/userData';
 
 // ---------- Helpers ----------
 function detectTimezone(location: string, hemisphere: 'Northern' | 'Southern'): string {
@@ -85,11 +85,11 @@ function validateCity(location: string): { isValid: boolean; message?: string } 
 function validateTimeFormat(time: string): { isValid: boolean; message?: string } {
   const trimmed = (time || '').trim();
   if (!/^\d{1,2}:\d{2}$/.test(trimmed)) {
-    return { isValid: false, message: 'Time must be in HH:MM (24-hour) format, e.g., 14:30.' };
+    return { isValid: false, message: 'Time must be in HH:MM (24-hour) format, for example 14:30.' };
   }
   const [h, m] = trimmed.split(':').map(n => parseInt(n, 10));
-  if (h < 0 || h > 23) return { isValid: false, message: 'Hours must be 00–23.' };
-  if (m < 0 || m > 59) return { isValid: false, message: 'Minutes must be 00–59.' };
+  if (h < 0 || h > 23) return { isValid: false, message: 'Hours must be 00-23.' };
+  if (m < 0 || m > 59) return { isValid: false, message: 'Minutes must be 00-59.' };
   return { isValid: true };
 }
 
@@ -146,17 +146,64 @@ export default function FindCuspCalculator() {
   };
 
   const saveUserProfile = async (cuspResult: CuspResult) => {
-    const edits: EditableProfile = {
-      name,
-      hemisphere,
-      birthDateISO,
-      birthTime,
-      birthLocation,
-      cuspResult,
-    };
-    await saveCosmicProfileEdits(edits);
-    // force a fresh profile read (safe no-op if not signed in)
-    await getUserData(true).catch(() => {});
+    try {
+      if (!birthDateISO) {
+        console.warn('[find-cusp] Cannot save profile without birthDateISO');
+        return;
+      }
+
+      // Must be logged in for Cosmic Profile to persist
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        console.log('[find-cusp] No authenticated user, skipping profile save');
+        return;
+      }
+
+      // Use existing profile if present so we keep createdAt and flags
+      let existing: UserProfile | null = null;
+      try {
+        existing = await getUserData(true);
+      } catch (e) {
+        console.warn('[find-cusp] Could not fetch existing profile, will create new', e);
+      }
+
+      const profile: UserProfile = {
+        email: user.email ?? existing?.email ?? '',
+        name: name || existing?.name || '',
+        birthDate: birthDateISO,
+        birthTime,
+        birthLocation,
+        hemisphere,
+        cuspResult,
+        createdAt: existing?.createdAt || new Date().toISOString(),
+        lastLoginAt: existing?.lastLoginAt,
+        needsRecalc: false,
+      };
+
+      console.log('[find-cusp] Saving cosmic profile with', {
+        email: profile.email,
+        name: profile.name,
+        birthDate: profile.birthDate,
+        birthTime: profile.birthTime,
+        birthLocation: profile.birthLocation,
+        hemisphere: profile.hemisphere,
+        isOnCusp: profile.cuspResult?.isOnCusp,
+        cuspName: profile.cuspResult?.cuspName,
+      });
+
+      await saveUserData(profile);
+
+      // Force a fresh profile read so Cosmic Profile screen sees it
+      await getUserData(true).catch(() => {});
+
+      console.log('[find-cusp] Cosmic profile saved successfully');
+    } catch (e) {
+      console.error('[find-cusp] Error saving cosmic profile', e);
+      throw e;
+    }
   };
 
   const handleSaveAndExplore = async () => {
@@ -165,7 +212,7 @@ export default function FindCuspCalculator() {
       await saveUserProfile(result);
     } catch (e: any) {
       console.warn('[find-cusp] Save failed (non-fatal for explore):', e?.message || e);
-      // still allow navigation to explore
+      // Still allow navigation to explore
     }
     handleExploreHoroscope();
   };
@@ -195,8 +242,8 @@ export default function FindCuspCalculator() {
 
       const timezone = detectTimezone(birthLocation, hemisphere);
       const birthInfo: BirthInfo = {
-        date: birthDateISO, // ISO string (YYYY-MM-DD)
-        time: birthTime, // "HH:mm"
+        date: birthDateISO,  // ISO string (YYYY-MM-DD)
+        time: birthTime,     // "HH:mm"
         location: birthLocation,
         hemisphere,
         timezone,
@@ -238,7 +285,10 @@ export default function FindCuspCalculator() {
               </View>
               <Text style={styles.title}>Your Cosmic Profile</Text>
 
-              <LinearGradient colors={['rgba(212,175,55,0.2)', 'rgba(212,175,55,0.1)']} style={styles.resultCard}>
+              <LinearGradient
+                colors={['rgba(212,175,55,0.2)', 'rgba(212,175,55,0.1)']}
+                style={styles.resultCard}
+              >
                 <Text style={styles.resultTitle}>
                   {result.isOnCusp ? 'You Are On A Cusp!' : 'Pure Sign Energy'}
                 </Text>
@@ -280,7 +330,7 @@ export default function FindCuspCalculator() {
                       <Text style={styles.birthstoneTitle}>Your Cusp Birthstone</Text>
                     </View>
                     <Text style={styles.birthstoneMeaning}>
-                      Combines Aries’ fire and Taurus’ grounding with energetic passion and stabilizing strength.
+                      Combines Aries fire and Taurus grounding with energetic passion and stabilising strength.
                       Enhances courage while anchoring ambition.
                     </Text>
                   </View>
@@ -301,17 +351,25 @@ export default function FindCuspCalculator() {
                   )}
 
                   <TouchableOpacity style={styles.horoscopeButton} onPress={handleSaveAndExplore}>
-                    <Text style={styles.horoscopeButtonText}>Save & View Daily Horoscope</Text>
+                    <Text style={styles.horoscopeButtonText}>Save and View Daily Horoscope</Text>
                   </TouchableOpacity>
                 </View>
               </LinearGradient>
 
-              <LinearGradient colors={['rgba(139,157,195,0.2)', 'rgba(139,157,195,0.1)']} style={styles.contextCard}>
+              <LinearGradient
+                colors={['rgba(139,157,195,0.2)', 'rgba(139,157,195,0.1)']}
+                style={styles.contextCard}
+              >
                 <Text style={styles.contextTitle}>Cosmic Context</Text>
                 <Text style={styles.contextText}>{astronomicalContext}</Text>
               </LinearGradient>
 
-              <CosmicButton title="Calculate Again" onPress={resetCalculator} variant="outline" style={styles.button} />
+              <CosmicButton
+                title="Calculate Again"
+                onPress={resetCalculator}
+                variant="outline"
+                style={styles.button}
+              />
             </View>
           </ScrollView>
         </SafeAreaView>
@@ -349,11 +407,17 @@ export default function FindCuspCalculator() {
 
                 <View style={styles.hemisphereButtons}>
                   <TouchableOpacity
-                    style={[styles.hemisphereButton, hemisphere === 'Northern' && styles.hemisphereButtonActive]}
+                    style={[
+                      styles.hemisphereButton,
+                      hemisphere === 'Northern' && styles.hemisphereButtonActive,
+                    ]}
                     onPress={() => setHemisphere('Northern')}
                   >
                     <Text
-                      style={[styles.hemisphereButtonText, hemisphere === 'Northern' && styles.hemisphereButtonTextActive]}
+                      style={[
+                        styles.hemisphereButtonText,
+                        hemisphere === 'Northern' && styles.hemisphereButtonTextActive,
+                      ]}
                     >
                       Northern Hemisphere
                     </Text>
@@ -361,11 +425,17 @@ export default function FindCuspCalculator() {
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.hemisphereButton, hemisphere === 'Southern' && styles.hemisphereButtonActive]}
+                    style={[
+                      styles.hemisphereButton,
+                      hemisphere === 'Southern' && styles.hemisphereButtonActive,
+                    ]}
                     onPress={() => setHemisphere('Southern')}
                   >
                     <Text
-                      style={[styles.hemisphereButtonText, hemisphere === 'Southern' && styles.hemisphereButtonTextActive]}
+                      style={[
+                        styles.hemisphereButtonText,
+                        hemisphere === 'Southern' && styles.hemisphereButtonTextActive,
+                      ]}
                     >
                       Southern Hemisphere
                     </Text>
@@ -378,7 +448,12 @@ export default function FindCuspCalculator() {
               <View style={styles.inputSection}>
                 <View style={styles.inputWithIcon}>
                   <UserIcon size={20} color="#8b9dc3" style={styles.inputIcon} />
-                  <CosmicInput label="Your Name" placeholder="Enter your name" value={name} onChangeText={setName} />
+                  <CosmicInput
+                    label="Your Name"
+                    placeholder="Enter your name"
+                    value={name}
+                    onChangeText={setName}
+                  />
                 </View>
 
                 <View style={styles.inputWithIcon}>
@@ -390,7 +465,7 @@ export default function FindCuspCalculator() {
                   <Clock size={20} color="#8b9dc3" style={styles.inputIcon} />
                   <CosmicInput
                     label="Birth Time"
-                    placeholder="HH:MM (e.g., 14:30 for 2:30 PM)"
+                    placeholder="HH:MM (for example 14:30 for 2:30 PM)"
                     value={birthTime}
                     onChangeText={setBirthTime}
                   />
@@ -406,12 +481,12 @@ export default function FindCuspCalculator() {
                   label="Birth Location"
                   value={birthLocation}
                   onLocationChange={setBirthLocation}
-                  placeholder="Type your birth city (e.g., Manila, Sydney)…"
+                  placeholder="Type your birth city (for example Manila, Sydney)…"
                 />
 
                 <View style={styles.locationNote}>
                   <Text style={styles.locationNoteText}>
-                    💡 If your town doesn’t appear in suggestions, just type it manually (e.g., “Small Town, Country”)
+                    💡 If your town does not appear in suggestions, just type it manually (for example "Small Town, Country")
                   </Text>
                 </View>
               </View>
@@ -426,7 +501,11 @@ export default function FindCuspCalculator() {
                 }
                 onPress={handleCalculate}
                 disabled={
-                  calculating || !name?.trim() || !birthDateISO || !birthTime?.trim() || !birthLocation?.trim()
+                  calculating ||
+                  !name?.trim() ||
+                  !birthDateISO ||
+                  !birthTime?.trim() ||
+                  !birthLocation?.trim()
                 }
                 loading={calculating}
                 style={styles.calculateButton}
@@ -435,7 +514,10 @@ export default function FindCuspCalculator() {
               {/* Quick Navigation */}
               <View style={styles.quickNavSection}>
                 <Text style={styles.quickNavTitle}>Already know your sign?</Text>
-                <TouchableOpacity style={styles.quickNavButton} onPress={() => router.push('/(tabs)/astrology')}>
+                <TouchableOpacity
+                  style={styles.quickNavButton}
+                  onPress={() => router.push('/(tabs)/astrology')}
+                >
                   <Text style={styles.quickNavText}>Go to Daily Horoscope</Text>
                 </TouchableOpacity>
               </View>
@@ -549,11 +631,22 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 24,
   },
-  signContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  signContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
   primarySign: { fontSize: 32, fontFamily: 'Vazirmatn-Bold', color: '#e8e8e8' },
   cuspConnector: { fontSize: 24, fontFamily: 'Vazirmatn-Bold', color: '#d4af37', marginHorizontal: 16 },
   secondarySign: { fontSize: 32, fontFamily: 'Vazirmatn-Bold', color: '#e8e8e8' },
-  cuspName: { fontSize: 16, fontFamily: 'Vazirmatn-Medium', color: '#d4af37', textAlign: 'center', marginBottom: 20 },
+  cuspName: {
+    fontSize: 16,
+    fontFamily: 'Vazirmatn-Medium',
+    color: '#d4af37',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
   description: {
     fontSize: 16,
     fontFamily: 'Vazirmatn-Regular',
@@ -574,10 +667,20 @@ const styles = StyleSheet.create({
   detailLabel: { fontSize: 14, fontFamily: 'Vazirmatn-Medium', color: '#8b9dc3' },
   detailValue: { fontSize: 14, fontFamily: 'Vazirmatn-SemiBold', color: '#d4af37' },
 
-  birthstoneContainer: { marginBottom: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(212,175,55,0.2)' },
+  birthstoneContainer: {
+    marginBottom: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(212,175,55,0.2)',
+  },
   birthstoneHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   birthstoneTitle: { fontSize: 14, fontFamily: 'Vazirmatn-Medium', color: '#d4af37' },
-  birthstoneMeaning: { fontSize: 14, fontFamily: 'Vazirmatn-Regular', color: '#8b9dc3', lineHeight: 20 },
+  birthstoneMeaning: {
+    fontSize: 14,
+    fontFamily: 'Vazirmatn-Regular',
+    color: '#8b9dc3',
+    lineHeight: 20,
+  },
 
   actionButtons: { gap: 12, marginTop: 8 },
   detailsButton: {
@@ -590,7 +693,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(212,175,55,0.3)',
   },
-  detailsButtonText: { fontSize: 14, fontFamily: 'Vazirmatn-SemiBold', color: '#d4af37' },
+  detailsButtonText: {
+    fontSize: 14,
+    fontFamily: 'Vazirmatn-SemiBold',
+    color: '#d4af37',
+  },
 
   signDetailsButton: {
     alignItems: 'center',
@@ -602,7 +709,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(212,175,55,0.3)',
   },
-  signDetailsButtonText: { fontSize: 14, fontFamily: 'Vazirmatn-SemiBold', color: '#d4af37' },
+  signDetailsButtonText: {
+    fontSize: 14,
+    fontFamily: 'Vazirmatn-SemiBold',
+    color: '#d4af37',
+  },
 
   horoscopeButton: {
     alignItems: 'center',
@@ -614,7 +725,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(139,157,195,0.3)',
   },
-  horoscopeButtonText: { fontSize: 14, fontFamily: 'Vazirmatn-SemiBold', color: '#8b9dc3' },
+  horoscopeButtonText: {
+    fontSize: 14,
+    fontFamily: 'Vazirmatn-SemiBold',
+    color: '#8b9dc3',
+  },
 
   contextCard: {
     borderRadius: 16,
@@ -623,8 +738,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(139,157,195,0.3)',
   },
-  contextTitle: { fontSize: 18, fontFamily: 'Vazirmatn-Bold', color: '#8b9dc3', textAlign: 'center', marginBottom: 12 },
-  contextText: { fontSize: 14, fontFamily: 'Vazirmatn-Regular', color: '#e8e8e8', textAlign: 'center', lineHeight: 20 },
+  contextTitle: {
+    fontSize: 18,
+    fontFamily: 'Vazirmatn-Bold',
+    color: '#8b9dc3',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  contextText: {
+    fontSize: 14,
+    fontFamily: 'Vazirmatn-Regular',
+    color: '#e8e8e8',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
 
   button: { marginTop: 16 },
 
@@ -636,10 +763,38 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(139,157,195,0.2)',
   },
-  birthTimeNoteText: { fontSize: 12, fontFamily: 'Vazirmatn-Regular', color: '#e8e8e8', textAlign: 'center', lineHeight: 16 },
+  birthTimeNoteText: {
+    fontSize: 12,
+    fontFamily: 'Vazirmatn-Regular',
+    color: '#e8e8e8',
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+
+  locationNote: {
+    backgroundColor: 'rgba(139,157,195,0.06)',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(139,157,195,0.2)',
+  },
+  locationNoteText: {
+    fontSize: 12,
+    fontFamily: 'Vazirmatn-Regular',
+    color: '#e8e8e8',
+    textAlign: 'center',
+    lineHeight: 16,
+  },
 
   quickNavSection: { marginTop: 32, alignItems: 'center' },
-  quickNavTitle: { fontSize: 14, fontFamily: 'Vazirmatn-Regular', color: '#8b9dc3', textAlign: 'center', marginBottom: 12 },
+  quickNavTitle: {
+    fontSize: 14,
+    fontFamily: 'Vazirmatn-Regular',
+    color: '#8b9dc3',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
   quickNavButton: {
     paddingVertical: 12,
     paddingHorizontal: 24,
@@ -648,5 +803,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(139,157,195,0.3)',
   },
-  quickNavText: { fontSize: 14, fontFamily: 'Vazirmatn-Medium', color: '#8b9dc3' },
+  quickNavText: {
+    fontSize: 14,
+    fontFamily: 'Vazirmatn-Medium',
+    color: '#8b9dc3',
+  },
 });
