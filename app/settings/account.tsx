@@ -12,37 +12,36 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { User, Crown, ArrowLeft, Star } from 'lucide-react-native';
+import { User, Crown, ArrowLeft, Sparkles } from 'lucide-react-native';
 
 import CosmicBackground from '@/components/CosmicBackground';
 import { getCurrentUser, signOut } from '@/utils/auth';
-import { clearUserData, getUserData } from '@/utils/userData';
+import { clearUserData, getUserData, type UserProfile } from '@/utils/userData';
 import { openStripePortal } from '@/utils/billing';
 
 export default function AccountScreen() {
   const [email, setEmail] = useState<string | null>(null);
   const [loadingPortal, setLoadingPortal] = useState(false);
-  const [profile, setProfile] = useState<any | null>(null);
+
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
 
   useEffect(() => {
-    const loadUser = async () => {
+    const load = async () => {
       try {
         const user = await getCurrentUser();
         setEmail(user?.email ?? null);
-      } catch (error) {
-        console.error('[account] Failed to load user:', error);
-      }
 
-      try {
+        // Load saved cosmic profile from Supabase or local cache
         const data = await getUserData();
-        const maybeProfile = (data as any)?.profile ?? data;
-        setProfile(maybeProfile ?? null);
+        setProfile(data ?? null);
       } catch (error) {
-        console.error('[account] Failed to load profile data:', error);
+        console.error('[account] Failed to load user or profile:', error);
+      } finally {
+        setProfileLoading(false);
       }
     };
-
-    loadUser();
+    load();
   }, []);
 
   const handleGoBack = () => {
@@ -77,7 +76,7 @@ export default function AccountScreen() {
     try {
       console.log('[account] Manage subscription pressed');
       setLoadingPortal(true);
-      await openStripePortal(); // uses returnUrl = SITE_URL + '/'
+      await openStripePortal();
     } catch (error: any) {
       console.error('[account] openStripePortal error:', error);
       Alert.alert(
@@ -89,29 +88,37 @@ export default function AccountScreen() {
     }
   };
 
-  // --- Derived display values for the Cosmic Profile ---
-  const displayName = profile
-    ? (
-        `${profile.firstName ?? profile.given_name ?? ''} ${
-          profile.lastName ?? profile.family_name ?? ''
-        }`
-      ).trim() || 'Name not set'
-    : 'Name not set';
+  const handleEditCosmicProfile = () => {
+    // Use the existing hidden calculator route
+    // Tabs layout has: <Tabs.Screen name="find-cusp" options={{ href: null }} />
+    router.push('/(tabs)/find-cusp');
+  };
 
-  const birthDateDisplay =
-    profile?.birthDateDisplay ||
-    profile?.birth_date ||
-    profile?.dob ||
-    'Not set';
+  const niceDate = (iso?: string | null) => {
+    if (!iso) return 'Not set';
+    try {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return 'Not set';
+      return d.toLocaleDateString('en-AU', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+    } catch {
+      return 'Not set';
+    }
+  };
 
-  const birthTimeDisplay =
-    profile?.birthTimeDisplay ||
+  const birthTimeText =
+    profile?.birth_time_display ||
     profile?.birth_time ||
+    profile?.time ||
     'Not set';
 
-  const birthPlaceDisplay =
-    profile?.birthPlaceDisplay ||
+  const locationText =
+    profile?.location ||
     profile?.birth_place ||
+    profile?.city ||
     'Not set';
 
   return (
@@ -127,10 +134,10 @@ export default function AccountScreen() {
 
             <Text style={styles.title}>Account</Text>
             <Text style={styles.subtitle}>
-              View your profile and manage access
+              View your profile, cosmic details and manage access
             </Text>
 
-            {/* Profile card – signed in email */}
+            {/* Signed in email card */}
             <LinearGradient
               colors={['rgba(139, 157, 195, 0.2)', 'rgba(139, 157, 195, 0.1)']}
               style={styles.card}
@@ -144,34 +151,70 @@ export default function AccountScreen() {
               </View>
             </LinearGradient>
 
-            {/* Cosmic Profile card – visible whenever profile exists */}
-            {profile && (
-              <LinearGradient
-                colors={[
-                  'rgba(139, 157, 195, 0.25)',
-                  'rgba(139, 157, 195, 0.12)',
-                ]}
-                style={styles.cosmicCard}
-              >
-                <View style={styles.cosmicHeader}>
-                  <Star size={22} color="#d4af37" />
-                  <Text style={styles.cosmicTitle}>Cosmic Profile</Text>
+            {/* Cosmic profile card */}
+            <LinearGradient
+              colors={[
+                'rgba(212, 175, 55, 0.18)',
+                'rgba(139, 157, 195, 0.08)',
+              ]}
+              style={styles.card}
+            >
+              <Sparkles size={28} color="#d4af37" />
+              <View style={styles.cardContent}>
+                <Text style={styles.cardTitle}>Cosmic profile</Text>
+                <Text style={styles.cardDescription}>
+                  These details power your rising sign, cusp readings and sky
+                  timing.
+                </Text>
+
+                <View style={styles.profileRow}>
+                  <Text style={styles.profileLabel}>Name</Text>
+                  <Text style={styles.profileValue}>
+                    {profileLoading
+                      ? 'Loading...'
+                      : profile?.display_name ||
+                        profile?.name ||
+                        'Not set'}
+                  </Text>
                 </View>
 
-                <Text style={styles.cosmicText}>
-                  {displayName}
-                </Text>
-                <Text style={styles.cosmicText}>
-                  Date of birth: {birthDateDisplay}
-                </Text>
-                <Text style={styles.cosmicText}>
-                  Birth time: {birthTimeDisplay}
-                </Text>
-                <Text style={styles.cosmicText}>
-                  Location: {birthPlaceDisplay}
-                </Text>
-              </LinearGradient>
-            )}
+                <View style={styles.profileRow}>
+                  <Text style={styles.profileLabel}>Date of birth</Text>
+                  <Text style={styles.profileValue}>
+                    {profileLoading
+                      ? 'Loading...'
+                      : niceDate(
+                          profile?.birth_date ||
+                            profile?.dob ||
+                            profile?.date_of_birth,
+                        )}
+                  </Text>
+                </View>
+
+                <View style={styles.profileRow}>
+                  <Text style={styles.profileLabel}>Birth time</Text>
+                  <Text style={styles.profileValue}>
+                    {profileLoading ? 'Loading...' : birthTimeText || 'Not set'}
+                  </Text>
+                </View>
+
+                <View style={styles.profileRow}>
+                  <Text style={styles.profileLabel}>Location</Text>
+                  <Text style={styles.profileValue}>
+                    {profileLoading ? 'Loading...' : locationText}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.secondaryButton}
+                  onPress={handleEditCosmicProfile}
+                >
+                  <Text style={styles.secondaryButtonText}>
+                    Update your cosmic profile
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </LinearGradient>
 
             {/* Manage subscription */}
             <LinearGradient
@@ -192,7 +235,9 @@ export default function AccountScreen() {
                   disabled={loadingPortal}
                 >
                   <Text style={styles.primaryButtonText}>
-                    {loadingPortal ? 'Opening portal...' : 'Open billing portal'}
+                    {loadingPortal
+                      ? 'Opening portal...'
+                      : 'Open billing portal'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -277,6 +322,23 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
+  profileRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  profileLabel: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: '#8b9dc3',
+  },
+  profileValue: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: '#e8e8e8',
+    marginLeft: 12,
+  },
+
   primaryButton: {
     marginTop: 12,
     paddingVertical: 12,
@@ -292,30 +354,19 @@ const styles = StyleSheet.create({
     color: '#1a1a2e',
   },
 
-  // Cosmic profile styles
-  cosmicCard: {
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
+  secondaryButton: {
+    marginTop: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(139, 157, 195, 0.4)',
+    borderColor: '#d4af37',
+    alignSelf: 'flex-start',
   },
-  cosmicHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  cosmicTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter-SemiBold',
-    color: '#e8e8e8',
-    marginLeft: 10,
-  },
-  cosmicText: {
+  secondaryButtonText: {
     fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    color: '#8b9dc3',
-    marginBottom: 4,
+    fontFamily: 'Inter-Medium',
+    color: '#d4af37',
   },
 
   signOutButton: {
