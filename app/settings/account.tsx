@@ -12,16 +12,17 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { User, Crown, ArrowLeft } from 'lucide-react-native';
+import { User, Crown, ArrowLeft, Star } from 'lucide-react-native';
 
 import CosmicBackground from '@/components/CosmicBackground';
 import { getCurrentUser, signOut } from '@/utils/auth';
-import { clearUserData } from '@/utils/userData';
+import { clearUserData, getUserData } from '@/utils/userData';
 import { openStripePortal } from '@/utils/billing';
 
 export default function AccountScreen() {
   const [email, setEmail] = useState<string | null>(null);
   const [loadingPortal, setLoadingPortal] = useState(false);
+  const [profile, setProfile] = useState<any | null>(null);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -31,7 +32,16 @@ export default function AccountScreen() {
       } catch (error) {
         console.error('[account] Failed to load user:', error);
       }
+
+      try {
+        const data = await getUserData();
+        const maybeProfile = (data as any)?.profile ?? data;
+        setProfile(maybeProfile ?? null);
+      } catch (error) {
+        console.error('[account] Failed to load profile data:', error);
+      }
     };
+
     loadUser();
   }, []);
 
@@ -79,6 +89,31 @@ export default function AccountScreen() {
     }
   };
 
+  // --- Derived display values for the Cosmic Profile ---
+  const displayName = profile
+    ? (
+        `${profile.firstName ?? profile.given_name ?? ''} ${
+          profile.lastName ?? profile.family_name ?? ''
+        }`
+      ).trim() || 'Name not set'
+    : 'Name not set';
+
+  const birthDateDisplay =
+    profile?.birthDateDisplay ||
+    profile?.birth_date ||
+    profile?.dob ||
+    'Not set';
+
+  const birthTimeDisplay =
+    profile?.birthTimeDisplay ||
+    profile?.birth_time ||
+    'Not set';
+
+  const birthPlaceDisplay =
+    profile?.birthPlaceDisplay ||
+    profile?.birth_place ||
+    'Not set';
+
   return (
     <View style={styles.container}>
       <CosmicBackground />
@@ -95,7 +130,7 @@ export default function AccountScreen() {
               View your profile and manage access
             </Text>
 
-            {/* Profile card */}
+            {/* Profile card – signed in email */}
             <LinearGradient
               colors={['rgba(139, 157, 195, 0.2)', 'rgba(139, 157, 195, 0.1)']}
               style={styles.card}
@@ -108,6 +143,35 @@ export default function AccountScreen() {
                 </Text>
               </View>
             </LinearGradient>
+
+            {/* Cosmic Profile card – visible whenever profile exists */}
+            {profile && (
+              <LinearGradient
+                colors={[
+                  'rgba(139, 157, 195, 0.25)',
+                  'rgba(139, 157, 195, 0.12)',
+                ]}
+                style={styles.cosmicCard}
+              >
+                <View style={styles.cosmicHeader}>
+                  <Star size={22} color="#d4af37" />
+                  <Text style={styles.cosmicTitle}>Cosmic Profile</Text>
+                </View>
+
+                <Text style={styles.cosmicText}>
+                  {displayName}
+                </Text>
+                <Text style={styles.cosmicText}>
+                  Date of birth: {birthDateDisplay}
+                </Text>
+                <Text style={styles.cosmicText}>
+                  Birth time: {birthTimeDisplay}
+                </Text>
+                <Text style={styles.cosmicText}>
+                  Location: {birthPlaceDisplay}
+                </Text>
+              </LinearGradient>
+            )}
 
             {/* Manage subscription */}
             <LinearGradient
@@ -226,6 +290,32 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
     color: '#1a1a2e',
+  },
+
+  // Cosmic profile styles
+  cosmicCard: {
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 157, 195, 0.4)',
+  },
+  cosmicHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  cosmicTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
+    color: '#e8e8e8',
+    marginLeft: 10,
+  },
+  cosmicText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: '#8b9dc3',
+    marginBottom: 4,
   },
 
   signOutButton: {
