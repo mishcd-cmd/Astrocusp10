@@ -1,4 +1,4 @@
-[build]
+[build] 
   # This is what Netlify actually runs
   command   = "npm install --no-audit --no-fund && npm run build"
   # Because your Site settings → Base directory is set to "project 10",
