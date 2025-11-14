@@ -13,27 +13,19 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import {
-  Crown,
-  CreditCard,
-  Eye,
-  ArrowLeft,
-  Star,
-  Calendar,
-  Zap,
-} from 'lucide-react-native';
+import { Crown, CreditCard, Eye, ArrowLeft, Star, Calendar, Zap } from 'lucide-react-native';
 
 import CosmicBackground from '@/components/CosmicBackground';
 import {
-  openStripePortal,
   subscribeMonthly,
   subscribeYearly,
   upgradeToYearly,
   buyOneOffReading,
   getSubscriptionStatus,
 } from '@/utils/billing';
+import { openBillingPortal } from '@/utils/openBillingPortal';
 
-// This matches what billing.ts returns (SubscriptionCheck like object)
+// This matches what billing.ts returns (SubscriptionCheck)
 type SubStatus = {
   active: boolean;
   plan?: 'monthly' | 'yearly';
@@ -41,8 +33,6 @@ type SubStatus = {
   customerId?: string | null;
   price_id?: string | null;
   status?: string;
-  reason?: string;
-  source?: string;
   isVip?: boolean;
 } | null;
 
@@ -57,7 +47,6 @@ export default function SubscriptionScreen() {
     try {
       const s = await getSubscriptionStatus();
       setStatus(s);
-      console.log('[subscription] status payload:', s);
     } catch (e) {
       console.error('[subscription] status error', e);
       Alert.alert('Error', 'Could not fetch subscription status.');
@@ -97,8 +86,9 @@ export default function SubscriptionScreen() {
 
   const onOpenPortal = async () => {
     try {
+      console.log('[subscription] Opening billing portal via openBillingPortal');
       setActionLoading('portal');
-      await openStripePortal();
+      await openBillingPortal();
     } catch (e: any) {
       console.error('[subscription] portal error', e);
       Alert.alert('Billing Portal', e?.message || 'Failed to open billing portal.');
@@ -131,11 +121,11 @@ export default function SubscriptionScreen() {
       console.error('[subscription] monthly error', e);
       let errorMessage = 'Unable to start subscription. ';
 
-      if (e?.message?.toLowerCase().includes('network') || e?.message?.toLowerCase().includes('fetch')) {
+      if (e?.message?.includes('network') || e?.message?.includes('fetch')) {
         errorMessage += 'Please check your internet connection and try again.';
-      } else if (e?.message?.toLowerCase().includes('authentication') || e?.message?.toLowerCase().includes('auth')) {
+      } else if (e?.message?.includes('authentication') || e?.message?.includes('auth')) {
         errorMessage += 'Please sign in and try again.';
-      } else if (e?.message?.toLowerCase().includes('stripe') || e?.message?.toLowerCase().includes('payment')) {
+      } else if (e?.message?.includes('stripe') || e?.message?.includes('payment')) {
         errorMessage += 'Payment system error. Please try again in a moment.';
       } else {
         errorMessage += e?.message || 'Please try again.';
@@ -195,10 +185,7 @@ export default function SubscriptionScreen() {
   const isActive = !!status?.active;
   const isMonthly = status?.plan === 'monthly';
   const isYearly = status?.plan === 'yearly';
-  const isVip =
-    !!status?.isVip ||
-    status?.reason === 'special_account' ||
-    status?.source === 'override';
+  const isVip = !!status?.isVip;
 
   return (
     <View style={styles.container}>
@@ -293,7 +280,7 @@ export default function SubscriptionScreen() {
                   >
                     <CreditCard size={16} color="#8b9dc3" />
                     <Text style={styles.portalButtonText}>
-                      {actionLoading === 'portal' ? 'Opening...' : 'Billing Portal'}
+                      {actionLoading === 'portal' ? 'Opening…' : 'Billing Portal'}
                     </Text>
                   </TouchableOpacity>
 
@@ -305,7 +292,7 @@ export default function SubscriptionScreen() {
                     >
                       <Crown size={16} color="#1a1a2e" />
                       <Text style={styles.upgradeButtonText}>
-                        {actionLoading === 'upgrade' ? 'Upgrading...' : 'Upgrade to Yearly'}
+                        {actionLoading === 'upgrade' ? 'Upgrading…' : 'Upgrade to Yearly'}
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -328,66 +315,94 @@ export default function SubscriptionScreen() {
                   <Text style={styles.vipTitle}>VIP Account</Text>
                 </View>
                 <Text style={styles.vipDescription}>
-                  You have complimentary access to all Astral Plane features.
+                  You have complimentary access to all Astral Plane features. 
                   Thank you for being part of the Astro Cusp community.
                 </Text>
               </LinearGradient>
             )}
 
-            {/* Plans - always visible so you can test checkout */}
-            <View style={styles.subscriptionOptions}>
-              <Text style={styles.optionsTitle}>Choose Your Plan</Text>
+            {/* Plans (only if not active) */}
+            {!isActive && (
+              <View style={styles.subscriptionOptions}>
+                <Text style={styles.optionsTitle}>Choose Your Plan</Text>
 
-              <LinearGradient
-                colors={['rgba(212, 175, 55, 0.2)', 'rgba(212, 175, 55, 0.1)']}
-                style={styles.planCard}
-              >
-                <View style={styles.planHeader}>
-                  <Crown size={20} color="#d4af37" />
-                  <Text style={styles.planName}>Monthly Plan</Text>
-                </View>
-                <Text style={styles.planPrice}>$8.00 AUD / month</Text>
-                <Text style={styles.planDescription}>
-                  Full access to all premium features with monthly billing.
-                </Text>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.subscribeButton]}
-                  onPress={onSubscribeMonthly}
-                  disabled={actionLoading !== null}
+                <LinearGradient
+                  colors={['rgba(212, 175, 55, 0.2)', 'rgba(212, 175, 55, 0.1)']}
+                  style={styles.planCard}
                 >
-                  <Text style={styles.subscribeButtonText}>
-                    {actionLoading === 'monthly' ? 'Processing...' : 'Start Monthly'}
-                  </Text>
-                </TouchableOpacity>
-              </LinearGradient>
-
-              <LinearGradient
-                colors={['rgba(212, 175, 55, 0.25)', 'rgba(212, 175, 55, 0.15)']}
-                style={[styles.planCard, styles.yearlyPlanCard]}
-              >
-                <View style={styles.planHeader}>
-                  <Crown size={20} color="#d4af37" />
-                  <Text style={styles.planName}>Yearly Plan</Text>
-                  <View style={styles.savingsBadge}>
-                    <Text style={styles.savingsText}>Save up to 10%</Text>
+                  <View style={styles.planHeader}>
+                    <Crown size={20} color="#d4af37" />
+                    <Text style={styles.planName}>Monthly Plan</Text>
                   </View>
-                </View>
-                <Text style={styles.planPrice}>$88.00 AUD / year</Text>
-                <Text style={styles.planEquivalent}>Only $7.33 per month</Text>
-                <Text style={styles.planDescription}>
-                  Full access to all premium features with yearly savings.
-                </Text>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.subscribeButton]}
-                  onPress={onSubscribeYearly}
-                  disabled={actionLoading !== null}
-                >
-                  <Text style={styles.subscribeButtonText}>
-                    {actionLoading === 'yearly' ? 'Processing...' : 'Start Yearly'}
+                  <Text style={styles.planPrice}>$8.00 AUD / month</Text>
+                  <Text style={styles.planDescription}>
+                    Full access to all premium features with monthly billing.
                   </Text>
-                </TouchableOpacity>
-              </LinearGradient>
-            </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.actionButton,
+                      styles.subscribeButton,
+                      isVip && styles.disabledButton,
+                    ]}
+                    onPress={onSubscribeMonthly}
+                    disabled={actionLoading !== null || isVip}
+                  >
+                    <Text
+                      style={[
+                        styles.subscribeButtonText,
+                        isVip && styles.disabledButtonText,
+                      ]}
+                    >
+                      {isVip
+                        ? 'VIP Access Active'
+                        : actionLoading === 'monthly'
+                        ? 'Processing…'
+                        : 'Start Monthly'}
+                    </Text>
+                  </TouchableOpacity>
+                </LinearGradient>
+
+                <LinearGradient
+                  colors={['rgba(212, 175, 55, 0.25)', 'rgba(212, 175, 55, 0.15)']}
+                  style={[styles.planCard, styles.yearlyPlanCard]}
+                >
+                  <View style={styles.planHeader}>
+                    <Crown size={20} color="#d4af37" />
+                    <Text style={styles.planName}>Yearly Plan</Text>
+                    <View style={styles.savingsBadge}>
+                      <Text style={styles.savingsText}>Save up to 10%</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.planPrice}>$88.00 AUD / year</Text>
+                  <Text style={styles.planEquivalent}>Only $7.33 per month</Text>
+                  <Text style={styles.planDescription}>
+                    Full access to all premium features with yearly savings.
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.actionButton,
+                      styles.subscribeButton,
+                      isVip && styles.disabledButton,
+                    ]}
+                    onPress={onSubscribeYearly}
+                    disabled={actionLoading !== null || isVip}
+                  >
+                    <Text
+                      style={[
+                        styles.subscribeButtonText,
+                        isVip && styles.disabledButtonText,
+                      ]}
+                    >
+                      {isVip
+                        ? 'VIP Access Active'
+                        : actionLoading === 'yearly'
+                        ? 'Processing…'
+                        : 'Start Yearly'}
+                    </Text>
+                  </TouchableOpacity>
+                </LinearGradient>
+              </View>
+            )}
 
             {/* One-off Reading */}
             <LinearGradient
@@ -407,18 +422,33 @@ export default function SubscriptionScreen() {
               </Text>
 
               <TouchableOpacity
-                style={[styles.actionButton, styles.oneOffButton]}
+                style={[
+                  styles.actionButton,
+                  styles.oneOffButton,
+                  isVip && styles.disabledButton,
+                ]}
                 onPress={onBuyOneOff}
-                disabled={actionLoading !== null}
+                disabled={actionLoading !== null || isVip}
               >
                 <Eye size={16} color="#1a1a2e" />
-                <Text style={styles.oneOffButtonText}>
-                  {actionLoading === 'one-off' ? 'Processing...' : 'Purchase Reading'}
+                <Text
+                  style={[
+                    styles.oneOffButtonText,
+                    isVip && styles.disabledButtonText,
+                  ]}
+                >
+                  {isVip
+                    ? 'VIP Access Active'
+                    : actionLoading === 'one-off'
+                    ? 'Processing…'
+                    : 'Purchase Reading'}
                 </Text>
               </TouchableOpacity>
 
               <Text style={styles.oneOffNote}>
-                Perfect for exploring cusp astrology without a subscription commitment.
+                {isVip
+                  ? 'You already have VIP access to all features.'
+                  : 'Perfect for exploring cusp astrology without a subscription commitment.'}
               </Text>
             </LinearGradient>
 
@@ -426,7 +456,7 @@ export default function SubscriptionScreen() {
             {actionLoading && (
               <View style={styles.loadingOverlay}>
                 <ActivityIndicator size="large" color="#d4af37" />
-                <Text style={styles.loadingActionText}>Processing {actionLoading}...</Text>
+                <Text style={styles.loadingActionText}>Processing {actionLoading}…</Text>
               </View>
             )}
           </View>
@@ -676,5 +706,13 @@ const styles = StyleSheet.create({
     color: '#e8e8e8',
     textAlign: 'center',
     lineHeight: 24,
+  },
+
+  disabledButton: {
+    opacity: 0.5,
+    backgroundColor: '#4a4a4a',
+  },
+  disabledButtonText: {
+    color: '#888888',
   },
 });
