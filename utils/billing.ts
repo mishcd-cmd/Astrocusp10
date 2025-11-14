@@ -57,7 +57,7 @@ export async function hasActiveSubscription(): Promise<SubscriptionCheck> {
   try {
     console.log('🔍 [billing] Starting subscription check...');
 
-    // 1) Ensure we have a session or token
+    // 1) Ensure we have a session/token
     const {
       data: { session },
       error: sessionErr,
@@ -98,12 +98,11 @@ export async function hasActiveSubscription(): Promise<SubscriptionCheck> {
     // 2) Call Edge Function (with a tiny retry if we ever hit a 401)
     let { data, error } = await invokeStripeStatus(accessToken);
 
-    // If the function 401s, try once more after refreshing the session
     if (error && (error as any)?.status === 401) {
       console.warn(
         '[billing] stripe-status 401; retrying after session refresh…',
       );
-      await supabase.auth.getSession(); // poke the client to ensure fresh token
+      await supabase.auth.getSession();
       const refreshedToken =
         (await supabase.auth.getSession()).data.session?.access_token ??
         accessToken;
@@ -123,7 +122,6 @@ export async function hasActiveSubscription(): Promise<SubscriptionCheck> {
 
     console.log('🔍 [billing] Stripe status response:', data);
 
-    // Normalise what the Edge Function returns into our shape
     const raw: any = data || {};
 
     const status =
@@ -189,8 +187,7 @@ export async function hasActiveSubscription(): Promise<SubscriptionCheck> {
 }
 
 /**
- * Back compat alias used across the app.
- * Screens like app/settings/subscription.tsx call this.
+ * Back-compat alias used across the app.
  */
 export async function getSubscriptionStatus(): Promise<SubscriptionCheck> {
   return hasActiveSubscription();
@@ -201,7 +198,6 @@ export async function getSubscriptionStatus(): Promise<SubscriptionCheck> {
 export async function subscribeMonthly(): Promise<void> {
   console.log('=== SUBSCRIBE MONTHLY ===');
 
-  // Check authentication first
   const { getCurrentUser } = await import('./auth');
   const authUser = await getCurrentUser();
 
@@ -209,12 +205,8 @@ export async function subscribeMonthly(): Promise<void> {
     throw new Error('Please sign in to subscribe');
   }
 
-  console.log(
-    'User authenticated for monthly subscription:',
-    authUser.email,
-  );
+  console.log('User authenticated for monthly subscription:', authUser.email);
 
-  // Check Stripe configuration first
   if (!isStripeConfigured()) {
     throw new Error('Payment system not configured. Please contact support.');
   }
@@ -226,9 +218,7 @@ export async function subscribeMonthly(): Promise<void> {
   console.log('Monthly price ID:', STRIPE_PRICE_MONTHLY);
 
   const siteUrl = SITE_URL;
-
-  // Use clean, real web paths (no (tabs) group in URL)
-  const successUrl = `${siteUrl}/`; // app/index.tsx redirects / to Daily Astrology
+  const successUrl = `${siteUrl}/`;      // Daily
   const cancelUrl = `${siteUrl}/settings`; // Settings tab
 
   console.log('Checkout URLs (monthly):', { successUrl, cancelUrl });
@@ -243,7 +233,6 @@ export async function subscribeMonthly(): Promise<void> {
 export async function subscribeYearly(): Promise<void> {
   console.log('=== SUBSCRIBE YEARLY ===');
 
-  // Check authentication first
   const { getCurrentUser } = await import('./auth');
   const authUser = await getCurrentUser();
 
@@ -251,12 +240,8 @@ export async function subscribeYearly(): Promise<void> {
     throw new Error('Please sign in to subscribe');
   }
 
-  console.log(
-    'User authenticated for yearly subscription:',
-    authUser.email,
-  );
+  console.log('User authenticated for yearly subscription:', authUser.email);
 
-  // Check Stripe configuration first
   if (!isStripeConfigured()) {
     throw new Error('Payment system not configured. Please contact support.');
   }
@@ -266,7 +251,6 @@ export async function subscribeYearly(): Promise<void> {
   }
 
   const siteUrl = SITE_URL;
-
   const successUrl = `${siteUrl}/`;
   const cancelUrl = `${siteUrl}/settings`;
 
@@ -282,7 +266,6 @@ export async function subscribeYearly(): Promise<void> {
 export async function buyOneOffReading(): Promise<void> {
   console.log('=== BUY ONE-OFF READING ===');
 
-  // Check authentication first
   const { getCurrentUser } = await import('./auth');
   const authUser = await getCurrentUser();
 
@@ -290,12 +273,8 @@ export async function buyOneOffReading(): Promise<void> {
     throw new Error('Please sign in to purchase');
   }
 
-  console.log(
-    'User authenticated for one-off purchase:',
-    authUser.email,
-  );
+  console.log('User authenticated for one-off purchase:', authUser.email);
 
-  // Check Stripe configuration first
   if (!isStripeConfigured()) {
     throw new Error('Payment system not configured. Please contact support.');
   }
@@ -305,7 +284,6 @@ export async function buyOneOffReading(): Promise<void> {
   }
 
   const siteUrl = SITE_URL;
-
   const successUrl = `${siteUrl}/`;
   const cancelUrl = `${siteUrl}/settings`;
 
@@ -326,7 +304,7 @@ export async function upgradeToYearly(): Promise<{ message: string }> {
 
 /**
  * Billing portal helper.
- * Web: navigate the same tab to Stripe (mobile friendly).
+ * Web + mobile browser: full-page navigate to Stripe and back to `/`.
  * Native: open via Linking.
  */
 export async function openStripePortal(): Promise<void> {
@@ -334,7 +312,8 @@ export async function openStripePortal(): Promise<void> {
   const siteUrl = SITE_URL;
 
   const { data, error } = await supabase.functions.invoke('stripe-portal', {
-    body: { returnUrl: `${siteUrl}/settings/subscription` },
+    // ✅ Return to root (`/`) so we avoid the fragile /settings/subscription route
+    body: { returnUrl: `${siteUrl}/` },
   });
 
   if (error) {
@@ -349,11 +328,11 @@ export async function openStripePortal(): Promise<void> {
   }
 
   if (typeof window !== 'undefined') {
-    // Web: navigate same tab so mobile browsers do not block it
+    // Web / mobile browser: full page navigation (no popup / new tab)
     console.log('[billing] Navigating browser to Stripe portal:', url);
     window.location.href = url;
   } else {
-    // Native app: use deep link
+    // Native app: open via Linking
     const Linking = await import('expo-linking');
     console.log('[billing] Opening Stripe portal via Linking in native app');
     await Linking.openURL(url);
