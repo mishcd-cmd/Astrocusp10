@@ -9,6 +9,7 @@ import {
   SafeAreaView,
   TouchableOpacity,
   Alert,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -32,8 +33,8 @@ export default function AccountScreen() {
         const user = await getCurrentUser();
         setEmail(user?.email ?? null);
 
-        // Load saved cosmic profile from Supabase via new userData
-        const data = await getUserData(true); // force fresh so edits show immediately
+        // Load saved cosmic profile from Supabase or local cache
+        const data = await getUserData();
         setProfile(data ?? null);
       } catch (error) {
         console.error('[account] Failed to load user or profile:', error);
@@ -52,21 +53,40 @@ export default function AccountScreen() {
     }
   };
 
+  const doSignOut = async () => {
+    try {
+      console.log('[account] Confirmed sign out. Clearing user data and auth...');
+      await clearUserData();
+      await signOut();
+    } catch (err) {
+      console.error('[account] Sign out error:', err);
+    } finally {
+      router.replace('/auth/login');
+    }
+  };
+
   const handleSignOut = () => {
+    // Web: Alert is a no-op so use window.confirm instead
+    if (Platform.OS === 'web') {
+      const confirmed =
+        typeof window !== 'undefined'
+          ? window.confirm('Are you sure you want to sign out?')
+          : true;
+
+      if (confirmed) {
+        void doSignOut();
+      }
+      return;
+    }
+
+    // Native: use React Native Alert
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign Out',
         style: 'destructive',
-        onPress: async () => {
-          try {
-            await clearUserData();
-            await signOut();
-          } catch (err) {
-            console.error('[account] Sign out error:', err);
-          } finally {
-            router.replace('/auth/login');
-          }
+        onPress: () => {
+          void doSignOut();
         },
       },
     ]);
@@ -108,21 +128,21 @@ export default function AccountScreen() {
     }
   };
 
-  // New fields from UserProfile
-  const birthTimeText = profile?.birthTime || 'Not set';
-  const locationText = profile?.birthLocation || 'Not set';
-  const hemisphereText = profile?.hemisphere || 'Southern';
+  const birthTimeText =
+    // Try various fields if your profile shape is a bit loose
+    (profile as any)?.birth_time_display ||
+    (profile as any)?.birthTime ||
+    (profile as any)?.birth_time ||
+    (profile as any)?.time ||
+    'Not set';
 
-  // Cusp and sign display
-  const cuspResult = profile?.cuspResult;
-  const hasCuspData = !!cuspResult && !!cuspResult.primarySign;
-  const isOnCusp = !!cuspResult?.isOnCusp;
-
-  const cosmicTitle = hasCuspData
-    ? (cuspResult.cuspName || cuspResult.primarySign)
-    : 'Cosmic profile not set';
-
-  const nameText = profile?.name || 'Name not set';
+  const locationText =
+    (profile as any)?.birthLocation ||
+    (profile as any)?.location ||
+    (profile as any)?.birth_place ||
+    (profile as any)?.birthCity ||
+    (profile as any)?.city ||
+    'Not set';
 
   return (
     <View style={styles.container}>
@@ -154,7 +174,7 @@ export default function AccountScreen() {
               </View>
             </LinearGradient>
 
-            {/* Cosmic profile card using new UserProfile shape */}
+            {/* Cosmic profile card */}
             <LinearGradient
               colors={[
                 'rgba(212, 175, 55, 0.18)',
@@ -170,92 +190,44 @@ export default function AccountScreen() {
                   timing.
                 </Text>
 
-                {profileLoading ? (
-                  <View style={{ marginTop: 8 }}>
-                    <Text style={styles.profileValue}>Loading...</Text>
-                  </View>
-                ) : profile == null ? (
-                  <>
-                    <View style={styles.profileRow}>
-                      <Text style={styles.profileLabel}>Name</Text>
-                      <Text style={styles.profileValue}>Name not set</Text>
-                    </View>
-                    <View style={styles.profileRow}>
-                      <Text style={styles.profileLabel}>Date of birth</Text>
-                      <Text style={styles.profileValue}>Not set</Text>
-                    </View>
-                    <View style={styles.profileRow}>
-                      <Text style={styles.profileLabel}>Birth time</Text>
-                      <Text style={styles.profileValue}>Not set</Text>
-                    </View>
-                    <View style={styles.profileRow}>
-                      <Text style={styles.profileLabel}>Location</Text>
-                      <Text style={styles.profileValue}>Not set</Text>
-                    </View>
-                    <View style={styles.profileRow}>
-                      <Text style={styles.profileLabel}>Hemisphere</Text>
-                      <Text style={styles.profileValue}>Not set</Text>
-                    </View>
-                  </>
-                ) : (
-                  <>
-                    {/* Name and sign */}
-                    <View style={styles.profileRow}>
-                      <Text style={styles.profileLabel}>Name</Text>
-                      <Text style={styles.profileValue}>{nameText}</Text>
-                    </View>
+                <View style={styles.profileRow}>
+                  <Text style={styles.profileLabel}>Name</Text>
+                  <Text style={styles.profileValue}>
+                    {profileLoading
+                      ? 'Loading...'
+                      : (profile as any)?.display_name ||
+                        (profile as any)?.name ||
+                        'Not set'}
+                  </Text>
+                </View>
 
-                    {hasCuspData && (
-                      <>
-                        <View style={styles.profileRow}>
-                          <Text style={styles.profileLabel}>Cosmic position</Text>
-                          <Text style={styles.profileValue}>{cosmicTitle}</Text>
-                        </View>
-
-                        {isOnCusp && cuspResult?.secondarySign && (
-                          <View style={styles.profileRow}>
-                            <Text style={styles.profileLabel}>Cusp</Text>
-                            <Text style={styles.profileValue}>
-                              {cuspResult.primarySign} × {cuspResult.secondarySign}
-                            </Text>
-                          </View>
+                <View style={styles.profileRow}>
+                  <Text style={styles.profileLabel}>Date of birth</Text>
+                  <Text style={styles.profileValue}>
+                    {profileLoading
+                      ? 'Loading...'
+                      : niceDate(
+                          (profile as any)?.birth_date ||
+                            (profile as any)?.birthDate ||
+                            (profile as any)?.dob ||
+                            (profile as any)?.date_of_birth,
                         )}
+                  </Text>
+                </View>
 
-                        {typeof cuspResult.sunDegree === 'number' && (
-                          <View style={styles.profileRow}>
-                            <Text style={styles.profileLabel}>Sun</Text>
-                            <Text style={styles.profileValue}>
-                              {cuspResult.sunDegree}° {cuspResult.primarySign}
-                            </Text>
-                          </View>
-                        )}
-                      </>
-                    )}
+                <View style={styles.profileRow}>
+                  <Text style={styles.profileLabel}>Birth time</Text>
+                  <Text style={styles.profileValue}>
+                    {profileLoading ? 'Loading...' : birthTimeText || 'Not set'}
+                  </Text>
+                </View>
 
-                    {/* Birth details */}
-                    <View style={styles.profileRow}>
-                      <Text style={styles.profileLabel}>Date of birth</Text>
-                      <Text style={styles.profileValue}>
-                        {niceDate(profile.birthDate)}
-                      </Text>
-                    </View>
-
-                    <View style={styles.profileRow}>
-                      <Text style={styles.profileLabel}>Birth time</Text>
-                      <Text style={styles.profileValue}>{birthTimeText}</Text>
-                    </View>
-
-                    <View style={styles.profileRow}>
-                      <Text style={styles.profileLabel}>Location</Text>
-                      <Text style={styles.profileValue}>{locationText}</Text>
-                    </View>
-
-                    <View style={styles.profileRow}>
-                      <Text style={styles.profileLabel}>Hemisphere</Text>
-                      <Text style={styles.profileValue}>{hemisphereText}</Text>
-                    </View>
-                  </>
-                )}
+                <View style={styles.profileRow}>
+                  <Text style={styles.profileLabel}>Location</Text>
+                  <Text style={styles.profileValue}>
+                    {profileLoading ? 'Loading...' : locationText}
+                  </Text>
+                </View>
 
                 <TouchableOpacity
                   style={styles.secondaryButton}
@@ -277,7 +249,7 @@ export default function AccountScreen() {
               <View style={styles.cardContent}>
                 <Text style={styles.cardTitle}>Manage subscription</Text>
                 <Text style={styles.cardDescription}>
-                  Open the Stripe billing portal to update your plan, payment
+                  Open the Stripe billing portal to update your plan and payment
                   details or cancel.
                 </Text>
 
@@ -389,7 +361,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     color: '#e8e8e8',
     marginLeft: 12,
-    textAlign: 'right',
   },
 
   primaryButton: {
