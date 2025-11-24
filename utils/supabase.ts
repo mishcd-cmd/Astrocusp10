@@ -2,9 +2,7 @@
 import 'react-native-url-polyfill/auto';
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-// Use IndexedDB (via localforage) on Web to make persistence more robust than localStorage
-import localforage from 'localforage';
+import { Platform } from 'react-native';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
@@ -13,53 +11,73 @@ if (!SUPABASE_URL || !SUPABASE_ANON) {
   console.warn('[supabase] Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_ANON_KEY');
 }
 
-const isWeb = typeof window !== 'undefined';
+const isWeb = Platform.OS === 'web';
 
-// A storage adapter that uses IndexedDB on web (via localforage) and AsyncStorage on native
+// Lazy-load localforage only on web so native never touches it
+let webStore: any | null = null;
+
+async function getWebStore() {
+  if (!webStore) {
+    const lf = (await import('localforage')).default;
+    lf.config({
+      name: 'astrocusp',
+      storeName: 'auth',
+      description: 'Supabase auth session',
+    });
+    webStore = lf;
+  }
+  return webStore;
+}
+
+// Storage adapter: IndexedDB on web, AsyncStorage on native
 const storage = {
   getItem: async (key: string): Promise<string | null> => {
     try {
       if (isWeb) {
-        // localforage returns the value we set (string)
-        const v = await localforage.getItem<string>(key);
+        const lf = await getWebStore();
+        const v = await lf.getItem<string>(key);
         return v ?? null;
       }
       return await AsyncStorage.getItem(key);
-    } catch {
+    } catch (e) {
+      console.warn('[supabase] storage.getItem error', e);
       return null;
     }
   },
+
   setItem: async (key: string, value: string): Promise<void> => {
-    if (isWeb) {
-      await localforage.setItem<string>(key, value);
-      return;
+    try {
+      if (isWeb) {
+        const lf = await getWebStore();
+        await lf.setItem<string>(key, value);
+        return;
+      }
+      await AsyncStorage.setItem(key, value);
+    } catch (e) {
+      console.warn('[supabase] storage.setItem error', e);
     }
-    await AsyncStorage.setItem(key, value);
   },
+
   removeItem: async (key: string): Promise<void> => {
-    if (isWeb) {
-      await localforage.removeItem(key);
-      return;
+    try {
+      if (isWeb) {
+        const lf = await getWebStore();
+        await lf.removeItem(key);
+        return;
+      }
+      await AsyncStorage.removeItem(key);
+    } catch (e) {
+      console.warn('[supabase] storage.removeItem error', e);
     }
-    await AsyncStorage.removeItem(key);
   },
 };
-
-// Configure localforage (web only)
-if (isWeb) {
-  localforage.config({
-    name: 'astrocusp',
-    storeName: 'auth', // table name
-    description: 'Supabase auth session',
-  });
-}
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: {
     flowType: 'pkce',
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: false, // you already complete PKCE in /auth/callback
+    detectSessionInUrl: false,
     storage,
     storageKey: 'astro-cusp-auth-session',
   },
