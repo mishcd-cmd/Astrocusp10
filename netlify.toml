@@ -1,18 +1,11 @@
-[build]  
-  # This is what Netlify actually runs
+[build]
   command   = "npm install --no-audit --no-fund && npm run build"
-  # Because your Site settings → Base directory is set to "project 10",
-  # this "dist" is really "project 10/dist" on the Netlify build machine.
   publish   = "dist"
-  # Likewise, functions live in "project 10/netlify/functions"
   functions = "netlify/functions"
 
 [build.environment]
-  # Match the Node version you're using locally
   NODE_VERSION = "20.19.0"
 
-# 301 redirect: send all non-www traffic to the www domain
-# This only applies when the Host header is "astrocusp.com.au"
 [[redirects]]
   from = "/*"
   to = "https://www.astrocusp.com.au/:splat"
@@ -20,15 +13,12 @@
   force = true
   conditions = { Host = ["astrocusp.com.au"] }
 
-# SPA fallback: let Expo Router handle front-end routes
-# Keep this LAST so it does not override your 301 above
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
 [[headers]]
-  # Cache built asset files very aggressively
   for = "/assets/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"

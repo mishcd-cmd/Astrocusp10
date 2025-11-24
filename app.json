@@ -1,37 +1,35 @@
 {
   "expo": {
-    "name": "Astrocusp",
-    "slug": "astro-cusp",
-    "scheme": "astrocusp",
+    "name": "Astro Cusp",
+    "slug": "astrocusp",
+    "version": "1.0.1",
+    "orientation": "portrait",
     "icon": "./assets/images/icon.png",
+    "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/images/splash.png",
+      "image": "./assets/images/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0f1121"
+      "backgroundColor": "#ffffff"
     },
     "assetBundlePatterns": ["**/*"],
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#0f1121"
-      }
-    },
-    "ios": {
-      "icon": "./assets/images/icon.png",
-      "bundleIdentifier": "com.mutantmish.astrocusp",
-      "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
-    },
+    "scheme": "astrocusp",
     "web": {
-      "favicon": "./assets/images/icon.png",
-      "bundler": "metro"
-    },
-    "plugins": ["expo-iap"],
-    "extra": {
-      "eas": {
-        "projectId": "7d4214fb-69e2-4174-84aa-ef4ffd7242e3"
+      "favicon": "./assets/images/favicon.png",
+      "bundler": "metro",
+      "output": "static",
+      "build": {
+        "babel": {
+          "include": ["@expo/vector-icons"]
+        }
       }
-    }
+    },
+    "platforms": ["ios", "android", "web"],
+    "ios": {
+      "bundleIdentifier": "com.astrocusp.app",
+      "deploymentTarget": "15.0"
+    },
+    "plugins": [
+      "expo-router"
+    ]
   }
 }
