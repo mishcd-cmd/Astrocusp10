@@ -57,14 +57,46 @@ function isNonEmptyString(x: unknown): x is string {
 async function fetchJSON<T>(url: string, opts?: RequestInit & { timeoutMs?: number }): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), opts?.timeoutMs ?? 10000);
+
   try {
     const res = await fetch(url, { ...opts, signal: controller.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+
+    // Graceful error handling — DO NOT use statusText (iOS shows "Insufficient Storage").
+    if (!res.ok) {
+      let raw = '';
+
+      try {
+        raw = await res.text();
+      } catch {
+        // ignore
+      }
+
+      let message = raw || `Request failed (${res.status})`;
+
+      // Try to extract a real error message from JSON
+      try {
+        const json = JSON.parse(raw);
+        message =
+          json?.error ||
+          json?.message ||
+          json?.msg ||
+          json?.details ||
+          raw ||
+          message;
+      } catch {
+        // not JSON; use raw text
+      }
+
+      throw new Error(message);
+    }
+
     return (await res.json()) as T;
+
   } finally {
     clearTimeout(timeout);
   }
 }
+
 function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
