@@ -1,4 +1,5 @@
 // utils/billing.ts
+import { Platform } from 'react-native';
 import { supabase } from '@/utils/supabase';
 import {
   checkoutSubscription,
@@ -23,9 +24,10 @@ export type SubscriptionCheck = {
   renewsAt?: string | null;
   customerId?: string | null;
   isVip?: boolean;
-  // allow diagnostics or any extra props from the Edge Function
   [key: string]: any;
 };
+
+const isWeb = Platform.OS === 'web';
 
 const SPECIAL_ACCOUNTS = new Set<string>([
   'mish.cd@gmail.com',
@@ -46,23 +48,24 @@ async function invokeStripeStatus(accessToken: string) {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
-    body: {}, // no payload needed
+    body: {},
   });
 }
 
 /**
- * Core subscription check. This is the raw shape, including diagnostics.
+ * Core subscription check. Raw shape including diagnostics.
+ * Safe on all platforms.
  */
 export async function hasActiveSubscription(): Promise<SubscriptionCheck> {
   try {
     console.log('🔍 [billing] Starting subscription check...');
 
-    // 1) Ensure we have a session/token
     const {
       data: { session },
       error: sessionErr,
     } = await supabase.auth.getSession();
     if (sessionErr) console.warn('[billing] getSession error:', sessionErr);
+
     const accessToken = session?.access_token;
     if (!accessToken) {
       console.log('[billing] No session token, treating as not subscribed');
@@ -76,7 +79,6 @@ export async function hasActiveSubscription(): Promise<SubscriptionCheck> {
 
     const userEmail = (session.user?.email ?? '').toLowerCase();
 
-    // 1a) Special account override (VIP fast path)
     if (userEmail && SPECIAL_ACCOUNTS.has(userEmail)) {
       console.log(`✅ [billing] Special account access granted: ${userEmail}`);
       return {
@@ -95,7 +97,6 @@ export async function hasActiveSubscription(): Promise<SubscriptionCheck> {
 
     console.log('[billing] Session found, checking subscription status…');
 
-    // 2) Call Edge Function (with a tiny retry if we ever hit a 401)
     let { data, error } = await invokeStripeStatus(accessToken);
 
     if (error && (error as any)?.status === 401) {
@@ -124,10 +125,7 @@ export async function hasActiveSubscription(): Promise<SubscriptionCheck> {
 
     const raw: any = data || {};
 
-    const status =
-      raw.status ||
-      raw.subscription_status ||
-      'unknown';
+    const status = raw.status || raw.subscription_status || 'unknown';
 
     const active =
       raw.active === true ||
@@ -187,7 +185,7 @@ export async function hasActiveSubscription(): Promise<SubscriptionCheck> {
 }
 
 /**
- * Back-compat alias used across the app.
+ * Back compat alias.
  */
 export async function getSubscriptionStatus(): Promise<SubscriptionCheck> {
   return hasActiveSubscription();
@@ -197,6 +195,13 @@ export async function getSubscriptionStatus(): Promise<SubscriptionCheck> {
 
 export async function subscribeMonthly(): Promise<void> {
   console.log('=== SUBSCRIBE MONTHLY ===');
+
+  if (!isWeb) {
+    console.log('[billing] Stripe checkout blocked on native (monthly)');
+    throw new Error(
+      'Subscriptions are managed in the App Store on iOS. Please subscribe there or on the web.',
+    );
+  }
 
   const { getCurrentUser } = await import('./auth');
   const authUser = await getCurrentUser();
@@ -218,8 +223,8 @@ export async function subscribeMonthly(): Promise<void> {
   console.log('Monthly price ID:', STRIPE_PRICE_MONTHLY);
 
   const siteUrl = SITE_URL;
-  const successUrl = `${siteUrl}/`;      // Daily
-  const cancelUrl = `${siteUrl}/settings`; // Settings tab
+  const successUrl = `${siteUrl}/`;
+  const cancelUrl = `${siteUrl}/settings`;
 
   console.log('Checkout URLs (monthly):', { successUrl, cancelUrl });
 
@@ -232,6 +237,13 @@ export async function subscribeMonthly(): Promise<void> {
 
 export async function subscribeYearly(): Promise<void> {
   console.log('=== SUBSCRIBE YEARLY ===');
+
+  if (!isWeb) {
+    console.log('[billing] Stripe checkout blocked on native (yearly)');
+    throw new Error(
+      'Subscriptions are managed in the App Store on iOS. Please subscribe there or on the web.',
+    );
+  }
 
   const { getCurrentUser } = await import('./auth');
   const authUser = await getCurrentUser();
@@ -265,6 +277,13 @@ export async function subscribeYearly(): Promise<void> {
 
 export async function buyOneOffReading(): Promise<void> {
   console.log('=== BUY ONE-OFF READING ===');
+
+  if (!isWeb) {
+    console.log('[billing] Stripe one-off checkout blocked on native');
+    throw new Error(
+      'Purchases are managed in the App Store on iOS. Please buy there or on the web.',
+    );
+  }
 
   const { getCurrentUser } = await import('./auth');
   const authUser = await getCurrentUser();
@@ -304,15 +323,20 @@ export async function upgradeToYearly(): Promise<{ message: string }> {
 
 /**
  * Billing portal helper.
- * Web + mobile browser: full-page navigate to Stripe and back to `/`.
- * Native: open via Linking.
+ * Web: full page navigation to Stripe portal and back.
+ * Native: blocked (web only feature).
  */
 export async function openStripePortal(): Promise<void> {
   console.log('=== OPEN STRIPE PORTAL ===');
+
+  if (!isWeb) {
+    console.log('[billing] Stripe portal blocked on native');
+    return;
+  }
+
   const siteUrl = SITE_URL;
 
   const { data, error } = await supabase.functions.invoke('stripe-portal', {
-    // ✅ Return to root (`/`) so we avoid the fragile /settings/subscription route
     body: { returnUrl: `${siteUrl}/` },
   });
 
@@ -327,14 +351,6 @@ export async function openStripePortal(): Promise<void> {
     throw new Error('No portal URL returned');
   }
 
-  if (typeof window !== 'undefined') {
-    // Web / mobile browser: full page navigation (no popup / new tab)
-    console.log('[billing] Navigating browser to Stripe portal:', url);
-    window.location.href = url;
-  } else {
-    // Native app: open via Linking
-    const Linking = await import('expo-linking');
-    console.log('[billing] Opening Stripe portal via Linking in native app');
-    await Linking.openURL(url);
-  }
+  console.log('[billing] Navigating browser to Stripe portal:', url);
+  window.location.href = url;
 }
