@@ -10,6 +10,7 @@ import {
   Alert,
   ScrollView,
   SafeAreaView,
+  Platform,        // ✅ added
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -42,6 +43,9 @@ export default function SubscriptionScreen() {
   const [actionLoading, setActionLoading] = useState<
     null | 'portal' | 'upgrade' | 'monthly' | 'yearly' | 'one-off'
   >(null);
+
+  // ✅ Simple flag so we can branch behaviour
+  const isNativeApp = Platform.OS === 'ios' || Platform.OS === 'android';
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -116,7 +120,7 @@ export default function SubscriptionScreen() {
       console.log('[subscription] Monthly button clicked - starting process...');
       setActionLoading('monthly');
       await new Promise(resolve => setTimeout(resolve, 200));
-      await subscribeMonthly();
+      await subscribeMonthly(); // ✅ StoreKit on native, Stripe on web
     } catch (e: any) {
       console.error('[subscription] monthly error', e);
       let errorMessage = 'Unable to start subscription. ';
@@ -142,7 +146,7 @@ export default function SubscriptionScreen() {
       console.log('[subscription] Starting yearly subscription...');
       setActionLoading('yearly');
       await new Promise(resolve => setTimeout(resolve, 200));
-      await subscribeYearly();
+      await subscribeYearly(); // ✅ StoreKit on native, Stripe on web
     } catch (e: any) {
       console.error('[subscription] yearly error', e);
       Alert.alert(
@@ -159,7 +163,7 @@ export default function SubscriptionScreen() {
       console.log('[subscription] One-off button clicked - starting process...');
       setActionLoading('one-off');
       await new Promise(resolve => setTimeout(resolve, 200));
-      await buyOneOffReading();
+      await buyOneOffReading(); // ✅ we will gate this to web-only in the UI
     } catch (e: any) {
       console.error('[subscription] one-off error', e);
       Alert.alert('Purchase Failed', e?.message || 'Please try again.');
@@ -273,16 +277,19 @@ export default function SubscriptionScreen() {
                 </View>
 
                 <View style={styles.buttonRow}>
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.portalButton]}
-                    onPress={onOpenPortal}
-                    disabled={actionLoading === 'portal'}
-                  >
-                    <CreditCard size={16} color="#8b9dc3" />
-                    <Text style={styles.portalButtonText}>
-                      {actionLoading === 'portal' ? 'Opening…' : 'Billing Portal'}
-                    </Text>
-                  </TouchableOpacity>
+                  {/* ✅ Billing portal button is web-only to avoid Stripe on iOS */}
+                  {!isNativeApp && (
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.portalButton]}
+                      onPress={onOpenPortal}
+                      disabled={actionLoading === 'portal'}
+                    >
+                      <CreditCard size={16} color="#8b9dc3" />
+                      <Text style={styles.portalButtonText}>
+                        {actionLoading === 'portal' ? 'Opening…' : 'Billing Portal'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
 
                   {isMonthly && (
                     <TouchableOpacity
@@ -299,7 +306,9 @@ export default function SubscriptionScreen() {
                 </View>
 
                 <Text style={styles.managementNote}>
-                  Use the billing portal to update payment methods, view invoices, or cancel your subscription.
+                  {isNativeApp
+                    ? 'On iPhone and iPad, manage your Astro Cusp subscription in your Apple ID Subscriptions settings.'
+                    : 'Use the billing portal to update payment methods, view invoices, or cancel your subscription.'}
                 </Text>
               </LinearGradient>
             )}
@@ -405,52 +414,55 @@ export default function SubscriptionScreen() {
             )}
 
             {/* One-off Reading */}
-            <LinearGradient
-              colors={['rgba(139, 157, 195, 0.2)', 'rgba(139, 157, 195, 0.1)']}
-              style={styles.oneOffCard}
-            >
-              <View style={styles.oneOffHeader}>
-                <Eye size={24} color="#8b9dc3" />
-                <Text style={styles.oneOffTitle}>One-Time Reading</Text>
-              </View>
-
-              <Text style={styles.oneOffPrice}>$360.00 AUD</Text>
-              <Text style={styles.oneOffDescription}>
-                Get a comprehensive one-time cusp analysis with detailed insights,
-                birthstone guidance, personalised cosmic profile, and a copy of the
-                AstroCusp ebook containing all cusp personalities, without a subscription.
-              </Text>
-
-              <TouchableOpacity
-                style={[
-                  styles.actionButton,
-                  styles.oneOffButton,
-                  isVip && styles.disabledButton,
-                ]}
-                onPress={onBuyOneOff}
-                disabled={actionLoading !== null || isVip}
+            {/* ✅ One-off Stripe reading is web-only to satisfy Apple payment rules */}
+            {!isNativeApp && (
+              <LinearGradient
+                colors={['rgba(139, 157, 195, 0.2)', 'rgba(139, 157, 195, 0.1)']}
+                style={styles.oneOffCard}
               >
-                <Eye size={16} color="#1a1a2e" />
-                <Text
-                  style={[
-                    styles.oneOffButtonText,
-                    isVip && styles.disabledButtonText,
-                  ]}
-                >
-                  {isVip
-                    ? 'VIP Access Active'
-                    : actionLoading === 'one-off'
-                    ? 'Processing…'
-                    : 'Purchase Reading'}
-                </Text>
-              </TouchableOpacity>
+                <View style={styles.oneOffHeader}>
+                  <Eye size={24} color="#8b9dc3" />
+                  <Text style={styles.oneOffTitle}>One-Time Reading</Text>
+                </View>
 
-              <Text style={styles.oneOffNote}>
-                {isVip
-                  ? 'You already have VIP access to all features.'
-                  : 'Perfect for exploring cusp astrology without a subscription commitment.'}
-              </Text>
-            </LinearGradient>
+                <Text style={styles.oneOffPrice}>$360.00 AUD</Text>
+                <Text style={styles.oneOffDescription}>
+                  Get a comprehensive one-time cusp analysis with detailed insights,
+                  birthstone guidance, personalised cosmic profile, and a copy of the
+                  AstroCusp ebook containing all cusp personalities, without a subscription.
+                </Text>
+
+                <TouchableOpacity
+                  style={[
+                    styles.actionButton,
+                    styles.oneOffButton,
+                    isVip && styles.disabledButton,
+                  ]}
+                  onPress={onBuyOneOff}
+                  disabled={actionLoading !== null || isVip}
+                >
+                  <Eye size={16} color="#1a1a2e" />
+                  <Text
+                    style={[
+                      styles.oneOffButtonText,
+                      isVip && styles.disabledButtonText,
+                    ]}
+                  >
+                    {isVip
+                      ? 'VIP Access Active'
+                      : actionLoading === 'one-off'
+                      ? 'Processing…'
+                      : 'Purchase Reading'}
+                  </Text>
+                </TouchableOpacity>
+
+                <Text style={styles.oneOffNote}>
+                  {isVip
+                    ? 'You already have VIP access to all features.'
+                    : 'Perfect for exploring cusp astrology without a subscription commitment.'}
+                </Text>
+              </LinearGradient>
+            )}
 
             {/* Action overlay */}
             {actionLoading && (
