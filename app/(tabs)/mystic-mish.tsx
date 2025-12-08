@@ -68,12 +68,12 @@ export default function MysticMishScreen() {
 
   // === November Spells (Southern Hemisphere focus) ===
   const southernNovemberSpell = {
-    title: '🌸 The Flower Moon Grounding',
+    title: '🌸 The Cold Moon Grounding',
     subtitle: 'Full Moon in Taurus - Southern',
     description:
-      'A grounding ritual for blossoming growth and sensual calm as the season expands',
+      'A grounding ritual for releasing, growth and sensual calm as the season expands',
     seasonalContext:
-      'November in the South carries Flower Moon tone. Beauty is rising. Anchor growth with steady earth magic.',
+      'November in the South carries Cold Moon tone. Beauty is rising. Anchor growth with steady earth magic.',
     fullSpell: `Full Moon in Taurus - Southern
 Theme: grounding, stability, sensual renewal
 Items: moss agate, rose quartz, carnelian
@@ -118,13 +118,13 @@ Incantation:
 What I release becomes new life.
 I trust my shadows to teach me grace.
 I am reborn within this sacred space."`.trim(),
-    moonPhase: 'New Moon in Scorpio',
+    moonPhase: 'New Moon in Sagittarius',
     element: 'Water',
   };
 
   // === November Spells (Northern Hemisphere focus) ===
   const northernNovemberSpell = {
-    title: '❄️ The Frost Moon Resting',
+    title: '❄️ The cold Super Moon Resting',
     subtitle: 'Full Moon in Taurus - Northern',
     description:
       'A steadying rite for warmth, rest, and completion as the world cools',

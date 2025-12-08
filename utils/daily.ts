@@ -35,7 +35,7 @@ function stripTrailingCusp(s: string) {
   return s.replace(/\s*cusp\s*$/i, '').trim();
 }
 
-/** A strict, display-friendly normalization (keeps title case and en–dash) */
+/** A strict, display-friendly normalization (keeps title case and en dash) */
 function normalizeSignForDaily(input: string): {
   primaryWithCusp?: string;   // "Aries–Taurus Cusp"
   primaryNoCusp: string;      // "Aries–Taurus" or "Aries"
@@ -85,9 +85,9 @@ function buildSignAttemptsForDaily(
   const allowFallback = !!opts?.allowTrueSignFallback;
 
   const list: string[] = [];
-  if (primaryWithCusp) list.push(primaryWithCusp);                    // en–dash + "Cusp"
+  if (primaryWithCusp) list.push(primaryWithCusp);                    // en dash + "Cusp"
   if (primaryWithCusp) list.push(primaryWithCusp.replace(/–/g, '-')); // hyphen + "Cusp"
-  if (primaryNoCusp) list.push(primaryNoCusp);                         // en–dash no cusp
+  if (primaryNoCusp) list.push(primaryNoCusp);                        // en dash no cusp
   if (primaryNoCusp) list.push(primaryNoCusp.replace(/–/g, '-'));     // hyphen no cusp
 
   if (!isCusp || allowFallback) {
@@ -103,14 +103,14 @@ function hemiToDB(hemi?: HemiAny): 'Northern' | 'Southern' {
   return 'Southern';
 }
 
-// ----- Date helpers (timezone-safe, no string parsing!) -----
+// ----- Date helpers (timezone-safe, no string parsing) -----
 function pad2(n: number) {
   return `${n}`.padStart(2, '0');
 }
 
 /**
  * Return YYYY-MM-DD for a given Date in the given IANA time zone.
- * We DO NOT parse locale strings (which causes MM/DD vs DD/MM confusion).
+ * We do not parse locale strings (which causes MM/DD vs DD/MM confusion).
  */
 function ymdInTZ(d: Date, timeZone: string): string {
   const y = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric' }).format(d);
@@ -138,7 +138,7 @@ function anchorUTC(d = new Date()) {
 }
 
 /**
- * Build date anchors prioritizing the USER'S LOCAL DAY in their time zone,
+ * Build date anchors prioritizing the user's local day in their time zone,
  * then UTC, plus ±1-day in the user TZ to cover midnight edges.
  */
 function buildDailyAnchors(d = new Date()): string[] {
@@ -213,11 +213,68 @@ function rowMatchesSign(rowSign: string, candidate: string) {
   );
 }
 
+// ----- Extra lenient normaliser and row picker for odd DB sign strings -----
+
+function normalizeLooseSign(raw: string | null | undefined): string {
+  let s = (raw ?? '').toLowerCase();
+
+  // Drop anything in parentheses for safety, for example "(Northern Hemisphere)"
+  s = s.replace(/\(.*?\)/g, '');
+
+  // Remove common hemisphere words
+  s = s
+    .replace(/\bnorthern hemisphere\b/g, '')
+    .replace(/\bsouthern hemisphere\b/g, '')
+    .replace(/\bnorthern\b/g, '')
+    .replace(/\bsouthern\b/g, '');
+
+  // Normalise dashes, then remove all non-letters
+  s = normalizeDashesToHyphen(s);
+  s = s.replace(/[^a-z]/g, '');
+
+  return s.trim();
+}
+
+function pickBestDailyRow(
+  rows: DailyRow[],
+  signAttempts: string[]
+): DailyRow | null {
+  if (!rows || rows.length === 0) return null;
+
+  const attemptsLoose = signAttempts
+    .map(a => normalizeLooseSign(a))
+    .filter(Boolean);
+
+  if (!attemptsLoose.length) {
+    return rows[0] ?? null;
+  }
+
+  // Preferred: loose exact or containment match
+  for (const row of rows) {
+    const rowLoose = normalizeLooseSign(row.sign);
+    if (!rowLoose) continue;
+
+    const ok = attemptsLoose.some(a => {
+      if (!a) return false;
+      return (
+        rowLoose === a ||
+        rowLoose.includes(a) ||
+        a.includes(rowLoose)
+      );
+    });
+
+    if (ok) return row;
+  }
+
+  // Fallback: at least return the first row so the UI is not blank
+  return rows[0] ?? null;
+}
+
 // ------------------------
 // DB fetchers
 // ------------------------
 
-/** Fetch all rows for a given date+hemi; we’ll match the sign client-side. */
+/** Fetch all rows for a given date+hemi; we will match the sign client-side. */
 async function fetchRowsForDate(
   date: string,
   hemi: 'Northern' | 'Southern',
@@ -231,9 +288,13 @@ async function fetchRowsForDate(
 
   if (debug) {
     console.log('[daily] (horoscope_cache:list)', {
-      date, hemisphere: hemi,
+      date,
+      hemisphere: hemi,
       error: error?.message || null,
       count: Array.isArray(data) ? data.length : 0,
+      sampleSigns: Array.isArray(data)
+        ? data.slice(0, 5).map(r => r.sign)
+        : [],
     });
   }
 
@@ -296,60 +357,88 @@ export async function getDailyForecast(
       for (const s of signAttempts) {
         const key = cacheKeyDaily(userId, s, hemi, dateStr);
         const cached = getFromCache<DailyRow>(key);
-        if (cached && cached.date === dateStr && cached.hemisphere === hemi && cached.sign === s) {
-          if (debug) console.log('💾 [daily] cache hit', { key, sign: s, hemi, date: dateStr, source: cached.__source_table__ });
+        if (
+          cached &&
+          cached.date === dateStr &&
+          cached.hemisphere === hemi &&
+          cached.sign === s
+        ) {
+          if (debug) {
+            console.log('💾 [daily] cache hit', {
+              key,
+              sign: s,
+              hemi,
+              date: dateStr,
+              source: cached.__source_table__,
+            });
+          }
           return cached;
         }
       }
     }
   }
 
-  // DB tries: pull all rows for date+hemi, then match sign locally (handles dash/case/cusp).
+  // DB tries: pull all rows for date+hemi, then match sign locally.
   for (const dateStr of anchors) {
-    if (debug) console.log(`[daily] Fetching list for date="${dateStr}", hemisphere="${hemi}"`);
+    if (debug) {
+      console.log(
+        `[daily] Fetching list for date="${dateStr}", hemisphere="${hemi}"`
+      );
+    }
     const { rows, error } = await fetchRowsForDate(dateStr, hemi, debug);
     if (error) continue;
     if (!rows.length) {
-      if (debug) console.log('[daily] no rows for that date+hemi, trying next anchor');
+      if (debug) {
+        console.log(
+          '[daily] no rows for that date+hemi, trying next anchor'
+        );
+      }
       continue;
     }
 
-    // Try each candidate against fetched rows
-    for (const cand of signAttempts) {
-      const match = rows.find(r => rowMatchesSign(r.sign, cand));
-      if (match) {
-        const key = cacheKeyDaily(userId, match.sign, hemi, dateStr);
-        setInCache(key, match);
-        if (debug) {
-          console.log(`[daily] ✅ MATCH`, {
-            wanted: cand,
-            matchedRowSign: match.sign,
-            hemi,
-            date: dateStr,
-            hasDaily: !!match.daily_horoscope,
-            hasAff: !!match.affirmation,
-            hasDeep: !!match.deeper_insight,
-          });
-        }
-        return match;
+    // Use lenient picker to select the best row
+    const match = pickBestDailyRow(rows, signAttempts);
+
+    if (match) {
+      const key = cacheKeyDaily(userId, match.sign, hemi, dateStr);
+      setInCache(key, match);
+      if (debug) {
+        console.log('[daily] ✅ MATCH (lenient)', {
+          wantedAttempts: signAttempts,
+          matchedRowSign: match.sign,
+          hemi,
+          date: dateStr,
+          hasDaily: !!match.daily_horoscope,
+          hasAff: !!match.affirmation,
+          hasDeep: !!match.deeper_insight,
+        });
       }
+      return match;
     }
 
     if (debug) {
-      console.log('[daily] no sign match among rows for date anchor; sample signs:', rows.slice(0, 5).map(r => r.sign));
+      console.log(
+        '[daily] no sign match among rows for date anchor; sample signs:',
+        rows.slice(0, 5).map(r => r.sign)
+      );
     }
   }
 
-  if (debug) console.warn('[daily] not found for', { signAttempts, anchors, hemi });
+  if (debug) {
+    console.warn('[daily] not found for', { signAttempts, anchors, hemi });
+  }
   return null;
 }
 
 /** Convenience wrapper for screens */
-export async function getAccessibleHoroscope(user: any, opts?: {
-  forceDate?: string;
-  useCache?: boolean;
-  debug?: boolean;
-}) {
+export async function getAccessibleHoroscope(
+  user: any,
+  opts?: {
+    forceDate?: string;
+    useCache?: boolean;
+    debug?: boolean;
+  }
+) {
   const debug = !!opts?.debug;
 
   const hemisphere: HemiAny =
