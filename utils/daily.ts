@@ -18,6 +18,48 @@ export type DailyRow = {
   [key: string]: any;
 };
 
+// -------------------------------------------------------
+// Cusp name → canonical sign label mapping
+// -------------------------------------------------------
+const CUSP_NAME_TO_SIGN: Record<string, string> = {
+  // All keys are lowercase, squashed spacing
+  'cusp of power': 'Aries-Taurus Cusp',
+  'cusp of energy': 'Taurus-Gemini Cusp',
+  'cusp of magic': 'Gemini-Cancer Cusp',
+  'cusp of oscillation': 'Cancer-Leo Cusp',
+  'cusp of exposure': 'Leo-Virgo Cusp',
+  'cusp of beauty': 'Virgo-Libra Cusp',
+  'cusp of drama': 'Libra-Scorpio Cusp',
+  'cusp of revolution': 'Scorpio-Sagittarius Cusp',
+  'cusp of prophecy': 'Sagittarius-Capricorn Cusp',
+  'cusp of mystery': 'Capricorn-Aquarius Cusp',
+  'cusp of sensitivity': 'Aquarius-Pisces Cusp',
+};
+
+function resolveSignLabelForDaily(input: string): {
+  lookupLabel: string;
+  originalLabel: string;
+  fromCuspMap: boolean;
+} {
+  const originalLabel = squashSpaces(input || '');
+  const key = originalLabel.toLowerCase();
+  const mapped = CUSP_NAME_TO_SIGN[key];
+
+  if (mapped) {
+    return {
+      lookupLabel: mapped,
+      originalLabel,
+      fromCuspMap: true,
+    };
+  }
+
+  return {
+    lookupLabel: originalLabel,
+    originalLabel,
+    fromCuspMap: false,
+  };
+}
+
 // ----- String helpers -----
 function toTitleCaseWord(w: string) {
   return w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : '';
@@ -149,9 +191,8 @@ function buildDailyAnchors(d = new Date()): string[] {
   const tomorrowUser = ymdInTZ(new Date(d.getTime() + 24 * 60 * 60 * 1000), userTZ);
 
   const todayUTC = anchorUTC(d);
-  const todayLocal = anchorLocal(d); // device clock (rarely needed, but harmless)
+  const todayLocal = anchorLocal(d); // device clock
 
-  // order matters: userTZ first
   const anchors = [
     todayUser,
     todayUTC,
@@ -164,7 +205,6 @@ function buildDailyAnchors(d = new Date()): string[] {
 }
 
 // ----- Cache helpers -----
-// BUMP VERSION to invalidate old localStorage keys that caused stale content.
 const CACHE_VERSION = 'v2';
 
 function cacheKeyDaily(
@@ -197,14 +237,12 @@ function setInCache(key: string, value: unknown) {
 function rowMatchesSign(rowSign: string, candidate: string) {
   if (!rowSign || !candidate) return false;
 
-  // Canonical forms
   const canRow = canonSignForCompare(rowSign);
   const canRowNoCusp = canonSignNoCusp(rowSign);
 
   const canCand = canonSignForCompare(candidate);
   const canCandNoCusp = canonSignNoCusp(candidate);
 
-  // Exact or no-cusp equivalence
   return (
     canRow === canCand ||
     canRow === canCandNoCusp ||
@@ -218,7 +256,7 @@ function rowMatchesSign(rowSign: string, candidate: string) {
 function normalizeLooseSign(raw: string | null | undefined): string {
   let s = (raw ?? '').toLowerCase();
 
-  // Drop anything in parentheses for safety, for example "(Northern Hemisphere)"
+  // Drop anything in parentheses for safety
   s = s.replace(/\(.*?\)/g, '');
 
   // Remove common hemisphere words
@@ -249,7 +287,6 @@ function pickBestDailyRow(
     return rows[0] ?? null;
   }
 
-  // Preferred: loose exact or containment match
   for (const row of rows) {
     const rowLoose = normalizeLooseSign(row.sign);
     if (!rowLoose) continue;
@@ -266,7 +303,6 @@ function pickBestDailyRow(
     if (ok) return row;
   }
 
-  // Fallback: at least return the first row so the UI is not blank
   return rows[0] ?? null;
 }
 
@@ -335,13 +371,23 @@ export async function getDailyForecast(
   const today = new Date();
   const anchors = opts?.forceDate ? [opts.forceDate] : buildDailyAnchors(today);
 
-  const signAttempts = buildSignAttemptsForDaily(signIn, {
+  // Resolve cusp names to sign pairs first
+  const { lookupLabel, originalLabel, fromCuspMap } = resolveSignLabelForDaily(signIn);
+
+  let signAttempts = buildSignAttemptsForDaily(lookupLabel, {
     allowTrueSignFallback: !!opts?.allowTrueSignFallback,
   });
+
+  // Always include the original label at the end as a fallback attempt
+  if (originalLabel && !signAttempts.includes(originalLabel)) {
+    signAttempts = [...signAttempts, originalLabel];
+  }
 
   if (debug) {
     console.log('[daily] attempts', {
       originalSign: signIn,
+      lookupLabel,
+      fromCuspMap,
       signAttempts,
       anchors,
       hemisphere: hemi,
@@ -396,7 +442,28 @@ export async function getDailyForecast(
       continue;
     }
 
-    // Use lenient picker to select the best row
+    // Try strict matcher first
+    for (const cand of signAttempts) {
+      const matchStrict = rows.find(r => rowMatchesSign(r.sign, cand));
+      if (matchStrict) {
+        const key = cacheKeyDaily(userId, matchStrict.sign, hemi, dateStr);
+        setInCache(key, matchStrict);
+        if (debug) {
+          console.log('[daily] ✅ MATCH (strict)', {
+            wantedAttempts: signAttempts,
+            matchedRowSign: matchStrict.sign,
+            hemi,
+            date: dateStr,
+            hasDaily: !!matchStrict.daily_horoscope,
+            hasAff: !!matchStrict.affirmation,
+            hasDeep: !!matchStrict.deeper_insight,
+          });
+        }
+        return matchStrict;
+      }
+    }
+
+    // Then lenient picker as a final fallback
     const match = pickBestDailyRow(rows, signAttempts);
 
     if (match) {
@@ -439,8 +506,6 @@ export async function getAccessibleHoroscope(
     debug?: boolean;
   }
 ) {
-  const debug = !!opts?.debug;
-
   const hemisphere: HemiAny =
     user?.hemisphere === 'NH' || user?.hemisphere === 'SH'
       ? user.hemisphere
@@ -457,8 +522,8 @@ export async function getAccessibleHoroscope(
   const row = await getDailyForecast(signLabel, hemisphere, {
     userId: user?.id || user?.email,
     forceDate: opts?.forceDate,
-    useCache: false,     // TEMP: force fresh DB read so we bypass stale localStorage
-    debug: true,         // TEMP: keep logs visible while verifying
+    useCache: false,     // still forcing fresh DB reads while we stabilise
+    debug: true,
     allowTrueSignFallback: !isCuspInput ? true : false,
   });
 
