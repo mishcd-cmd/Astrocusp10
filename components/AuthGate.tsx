@@ -9,6 +9,25 @@ type Props = {
   children: React.ReactNode;
 };
 
+// Routes that should be visible even when the user is NOT signed in
+const PUBLIC_ROUTES = [
+  '/',                     // homepage
+  '/auth/welcome',         // auth welcome (if used)
+  '/settings/welcome',     // settings welcome (if hit directly)
+  '/auth/login',           // login
+  '/auth/signup',          // signup
+  '/auth/forgot-password',
+  '/password-reset',
+  '/(tabs)/find-cusp',     // cusp calculator
+];
+
+function isPublicRoute(pathname: string | null): boolean {
+  if (!pathname) return false;
+  // Strip query params like ?foo=bar
+  const clean = pathname.split('?')[0];
+  return PUBLIC_ROUTES.includes(clean);
+}
+
 export default function AuthGate({ children }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -29,23 +48,45 @@ export default function AuthGate({ children }: Props) {
         console.log('🔍 [AuthGate] Session check result:', {
           hasSession: !!session,
           email: session?.user?.email,
+          pathname,
         });
 
+        // No session
         if (!session) {
-          // No session at all → go to login
-          if (!routedRef.current && pathname !== '/auth/login') {
+          // Public route - allow
+          if (isPublicRoute(pathname)) {
+            console.log('ℹ️ [AuthGate] Public route with no session - allow');
+            setReady(true);
+            return;
+          }
+
+          // Protected route - send to login
+          if (!routedRef.current) {
+            console.log('➡️ [AuthGate] No session on protected route, redirecting to /auth/login');
             routedRef.current = true;
             router.replace('/auth/login');
           }
+
+          setReady(true);
+          return;
         }
 
+        // We have a session - allow
         setReady(true);
       } catch (error) {
         console.error('❌ [AuthGate] Error checking session:', error);
         clearLocalAuthData();
-        if (mounted) {
+
+        if (!mounted) return;
+
+        // On error, allow public routes, redirect protected
+        if (isPublicRoute(pathname)) {
+          console.log('ℹ️ [AuthGate] Error but route is public - allow');
+          setReady(true);
+        } else {
           setReady(true);
           if (!routedRef.current) {
+            console.log('➡️ [AuthGate] Error on protected route, redirecting to /auth/login');
             routedRef.current = true;
             router.replace('/auth/login');
           }
@@ -59,19 +100,23 @@ export default function AuthGate({ children }: Props) {
       async (event, session) => {
         if (!mounted) return;
 
-        console.log('🔄 [AuthGate] Auth state change:', event, !!session?.user);
+        console.log('🔄 [AuthGate] Auth state change:', event, !!session?.user, 'on', pathname);
 
         if (event === 'SIGNED_IN' && session?.user && !routedRef.current) {
-          // Always land on Daily after sign in
-          console.log('✅ [AuthGate] Signed in – routing to Daily');
+          // After sign-in, always land on Daily tab
+          console.log('✅ [AuthGate] Signed in - routing to Daily');
           routedRef.current = true;
           router.replace('/(tabs)/astrology');
         }
 
         if (event === 'SIGNED_OUT' && !routedRef.current) {
-          console.log('ℹ️ [AuthGate] User signed out, redirecting to login');
-          routedRef.current = true;
-          router.replace('/auth/login');
+          if (!isPublicRoute(pathname)) {
+            console.log('ℹ️ [AuthGate] Signed out on protected route - go to login');
+            routedRef.current = true;
+            router.replace('/auth/login');
+          } else {
+            console.log('ℹ️ [AuthGate] Signed out on public route - stay');
+          }
         }
 
         if (event === 'PASSWORD_RECOVERY' && !routedRef.current) {

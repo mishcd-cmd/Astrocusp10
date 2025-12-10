@@ -1,8 +1,8 @@
 // app/index.tsx
-import { Redirect } from 'expo-router';
+import React from 'react';
+import WelcomeScreen from './settings/welcome';
 
 export default function Index() {
-  // When someone goes to / or comes back from Stripe,
-  // send them to the Daily Astrology tab.
-  return <Redirect href="/(tabs)/astrology" />;
+  // When someone visits /, show the proper welcome + "Try the Cusp Calculator"
+  return <WelcomeScreen />;
 }
