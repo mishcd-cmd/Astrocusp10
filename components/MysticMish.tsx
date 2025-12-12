@@ -68,7 +68,7 @@ export default function MysticMish({
 
     // Exact requested popup message
     const message =
-      'November energy is strong and includes the years 1st micro moon, See Mystic Mish tab for more';
+      'Ending the year with New Moon energy! See Mystic Mish tab to tap into it';
 
     if (isMounted.current) {
       setCurrentRitual(message);
