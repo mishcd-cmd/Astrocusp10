@@ -5,26 +5,14 @@ import {
   StyleSheet,
   ScrollView,
   SafeAreaView,
-  TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import {
-  Star,
-  Moon,
-  Eye,
-  Crown,
-  Telescope,
-  Gem,
-  Settings,
-  User,
-  Sparkles,
-} from 'lucide-react-native';
+import { Gem } from 'lucide-react-native';
 
 import CosmicBackground from '../../components/CosmicBackground';
-import CosmicButton from '../../components/CosmicButton';
 import MysticMish from '../../components/MysticMish';
 import HoroscopeHeader from '../../components/HoroscopeHeader';
 
@@ -34,18 +22,42 @@ import { getAccessibleHoroscope, type HoroscopeData } from '../../utils/horoscop
 import { getHemisphereEvents, getCurrentPlanetaryPositionsEnhanced } from '../../utils/astronomy';
 import { getLunarNow } from '../../utils/lunar';
 import { getCuspGemstoneAndRitual } from '../../utils/cuspData';
-import { translateText, getUserLanguage, type SupportedLanguage } from '../../utils/translation';
 import { getDefaultSignFromUserData } from '../../utils/signs';
 
 /* -------------------------
- * Safe string helpers
+ * Safe helpers
  * ------------------------- */
 function asString(v: any): string {
   return typeof v === 'string' ? v : v == null ? '' : String(v);
 }
-function stripVersionSuffix(v?: string) {
-  const s = asString(v).trim();
-  return s.replace(/\s*V\d+\s*$/i, '').trim();
+
+/* -------------------------
+ * 🔑 CANONICAL CUSP NORMALISER
+ * ------------------------- */
+function normaliseCuspForGemstone(raw: string): string {
+  if (!raw) return '';
+
+  let s = raw
+    .replace(/_/g, '-')
+    .replace(/[—–]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+  // remove existing "cusp"
+  s = s.replace(/\s*cusp\s*/g, '');
+
+  const parts = s.split('-').map(p =>
+    p
+      .trim()
+      .split(' ')
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ')
+  );
+
+  if (parts.length < 2) return '';
+
+  return `${parts.join('–')} Cusp`;
 }
 
 export default function HoroscopeScreen() {
@@ -54,113 +66,63 @@ export default function HoroscopeScreen() {
 
   const initOnce = useRef(false);
   const inFlight = useRef(false);
-  const lastSubCheck = useRef<number>(0);
 
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-
   const [user, setUser] = useState<UserProfile | null>(null);
-  const [hasAccess, setHasAccess] = useState<boolean>(false);
+  const [hasAccess, setHasAccess] = useState(false);
   const [horoscope, setHoroscope] = useState<HoroscopeData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const [selectedSign, setSelectedSign] = useState<string>('');
+  const [selectedSign, setSelectedSign] = useState('');
   const [selectedHemisphere, setSelectedHemisphere] = useState<'Northern' | 'Southern'>('Northern');
-  const [moonPhase, setMoonPhase] = useState<any>(null);
-  const [astronomicalEvents, setAstronomicalEvents] = useState<any[]>([]);
-  const [planetaryPositions, setPlanetaryPositions] = useState<any[]>([]);
-  const [currentLanguage, setCurrentLanguage] = useState<SupportedLanguage>('en');
-  const [translatedContent, setTranslatedContent] = useState<any>({});
-
-  const resolvedSign = useMemo(() => {
-    if (params.sign) {
-      return decodeURIComponent(asString(params.sign));
-    }
-    if (!user) return undefined;
-    return getDefaultSignFromUserData(user);
-  }, [user, params.sign]);
-
-  const resolvedHemisphere = useMemo<'Northern' | 'Southern'>(() => {
-    const p = asString(params.hemisphere);
-    if (p) return decodeURIComponent(p) as 'Northern' | 'Southern';
-    return (user?.hemisphere as 'Northern' | 'Southern') || 'Northern';
-  }, [user, params.hemisphere]);
 
   useEffect(() => {
     if (initOnce.current) return;
     initOnce.current = true;
 
-    let cancelled = false;
-
-    const fetchAll = async () => {
-      if (inFlight.current) return;
-      inFlight.current = true;
-
+    const run = async () => {
       setLoading(true);
-      setError(null);
 
-      try {
-        const u = await getUserData();
-        if (cancelled) return;
+      const u = await getUserData();
+      setUser(u);
 
-        setUser(u);
+      const sub = await getSubscriptionStatus();
+      setHasAccess(!!sub?.active);
 
-        const now = Date.now();
-        if (now - lastSubCheck.current > 120_000) {
-          lastSubCheck.current = now;
-          const sub = await getSubscriptionStatus();
-          setHasAccess(!!sub?.active);
-        }
+      const sign =
+        decodeURIComponent(asString(params.sign)) ||
+        u?.cuspResult?.cuspName ||
+        u?.cuspResult?.primarySign ||
+        getDefaultSignFromUserData(u);
 
-        const sign =
-          decodeURIComponent(asString(params.sign)) ||
-          u?.cuspResult?.cuspName ||
-          u?.cuspResult?.primarySign ||
-          '';
+      const hemi =
+        (decodeURIComponent(asString(params.hemisphere)) as 'Northern' | 'Southern') ||
+        (u?.hemisphere as 'Northern' | 'Southern') ||
+        'Northern';
 
-        const hemi =
-          (decodeURIComponent(asString(params.hemisphere)) as 'Northern' | 'Southern') ||
-          (u?.hemisphere as 'Northern' | 'Southern') ||
-          'Northern';
+      setSelectedSign(sign);
+      setSelectedHemisphere(hemi);
 
-        setSelectedSign(sign);
-        setSelectedHemisphere(hemi);
+      const data = await getAccessibleHoroscope(new Date(), sign, hemi);
+      setHoroscope(data || null);
 
-        if (sign) {
-          const data = await getAccessibleHoroscope(new Date(), sign, hemi);
-          setHoroscope(data || null);
-        }
-
-        setMoonPhase(getLunarNow(hemi));
-        setAstronomicalEvents(getHemisphereEvents(hemi));
-        setPlanetaryPositions(await getCurrentPlanetaryPositionsEnhanced(hemi));
-
-        setCurrentLanguage(await getUserLanguage());
-      } catch (e: any) {
-        setError(e?.message || 'Failed to load horoscope.');
-      } finally {
-        inFlight.current = false;
-        setLoading(false);
-        setReady(true);
-      }
+      setReady(true);
+      setLoading(false);
     };
 
-    fetchAll();
-    return () => {
-      cancelled = true;
-    };
+    run();
   }, []);
-
-  const getDisplayText = (original?: string) => {
-    const base = asString(original);
-    if (currentLanguage !== 'zh') return base;
-    return translatedContent[base] || base;
-  };
 
   const isCusp =
     asString(horoscope?.sign).toLowerCase().includes('cusp') ||
-    asString(selectedSign).toLowerCase().includes('cusp');
+    asString(selectedSign).toLowerCase().includes('-');
+
+  const canonicalCusp = normaliseCuspForGemstone(
+    horoscope?.sign || selectedSign
+  );
+
+  const gemstoneData = canonicalCusp
+    ? getCuspGemstoneAndRitual(canonicalCusp)
+    : null;
 
   if (!ready || loading) {
     return (
@@ -173,50 +135,34 @@ export default function HoroscopeScreen() {
     );
   }
 
-  if (error) {
-    return (
-      <View style={styles.container}>
-        <CosmicBackground />
-        <SafeAreaView style={styles.safeArea}>
-          <Text style={styles.errorText}>{error}</Text>
-        </SafeAreaView>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.container}>
       <CosmicBackground />
       <MysticMish hemisphere={selectedHemisphere} />
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => {}} />}
-        >
+        <ScrollView>
           <HoroscopeHeader signLabel={horoscope?.sign || selectedSign} />
 
           {hasAccess && isCusp && (
-            <LinearGradient style={styles.gemstoneCard} colors={['rgba(212,175,55,0.15)','rgba(139,157,195,0.1)']}>
+            <LinearGradient
+              style={styles.gemstoneCard}
+              colors={['rgba(212,175,55,0.15)', 'rgba(139,157,195,0.1)']}
+            >
               <View style={styles.cardHeader}>
                 <Gem size={20} color="#d4af37" />
                 <Text style={styles.cardTitle}>Your Cusp Birthstone</Text>
               </View>
 
-              {(() => {
-                const gemstoneData = getCuspGemstoneAndRitual(
-                  horoscope?.sign || selectedSign
-                );
-
-                return gemstoneData ? (
-                  <>
-                    <Text style={styles.gemstoneName}>{gemstoneData.gemstone}</Text>
-                    <Text style={styles.gemstoneMeaning}>{gemstoneData.meaning}</Text>
-                  </>
-                ) : (
-                  <Text style={styles.gemstoneMeaning}>
-                    Your cusp birthstone enhances the dual energies of your cosmic position.
-                  </Text>
-                );
-              })()}
+              {gemstoneData ? (
+                <>
+                  <Text style={styles.gemstoneName}>{gemstoneData.gemstone}</Text>
+                  <Text style={styles.gemstoneMeaning}>{gemstoneData.meaning}</Text>
+                </>
+              ) : (
+                <Text style={styles.gemstoneMeaning}>
+                  ⚠ No gemstone found for "{canonicalCusp}"
+                </Text>
+              )}
             </LinearGradient>
           )}
         </ScrollView>
@@ -228,7 +174,6 @@ export default function HoroscopeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
-  errorText: { color: '#ff6b6b', textAlign: 'center', marginTop: 40 },
 
   gemstoneCard: {
     borderRadius: 16,
