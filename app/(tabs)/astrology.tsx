@@ -192,6 +192,36 @@ function getCuspGemstoneSafe(labelRaw: string) {
   return null;
 }
 
+/* -------------------------
+ * FIX: resolve cusp label for gemstone from profile first, not daily cache row
+ * ------------------------- */
+function resolveCuspLabelForGemstone(user: any, daily: any, fallbackSign: string): string | null {
+  // 1) Best: the user's canonical cusp label from profile (this is what Explore uses)
+  const cuspFromProfile = asString(user?.cuspResult?.cuspName).trim();
+  if (cuspFromProfile && /\bcusp\b/i.test(cuspFromProfile)) return cuspFromProfile;
+
+  // 2) If daily row contains a cusp label already (some DB rows do)
+  const dailySign = asString(daily?.sign).trim();
+  if (dailySign && /\bcusp\b/i.test(dailySign)) return dailySign;
+
+  // 3) If daily row is a cusp pair but missing the "Cusp" suffix (Aquarius_pisces, Pisces-Aries, Pisces–Aries)
+  if (dailySign && isCuspLabel(dailySign) && !/\bcusp\b/i.test(dailySign)) {
+    // Normalise to "A-B Cusp" style; safe helper will try multiple variants anyway
+    const base = normaliseCuspLabelForLookup(dailySign);
+    if (base) return `${base} Cusp`;
+  }
+
+  // 4) Last: whatever sign the screen thinks it is, if it is cusp-like
+  const fb = asString(fallbackSign).trim();
+  if (fb && isCuspLabel(fb)) {
+    const base = normaliseCuspLabelForLookup(fb);
+    if (base && !/\bcusp\b/i.test(fb)) return `${base} Cusp`;
+    return fb;
+  }
+
+  return null;
+}
+
 export default function AstrologyScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ sign?: string; hemisphere?: string }>();
@@ -675,7 +705,10 @@ export default function AstrologyScreen() {
               </View>
 
               {(() => {
-                const gemstoneData = getCuspGemstoneSafe(effectiveSign);
+                // FIX: use canonical cusp label from profile when available
+                const cuspLabelForGemstone = resolveCuspLabelForGemstone(user, daily, effectiveSign);
+
+                const gemstoneData = cuspLabelForGemstone ? getCuspGemstoneSafe(cuspLabelForGemstone) : null;
 
                 if (gemstoneData?.gemstone) {
                   return (
@@ -688,7 +721,10 @@ export default function AstrologyScreen() {
 
                 console.log('[cusp gemstone] lookup failed', {
                   effectiveSign,
-                  normalised: normaliseCuspLabelForLookup(effectiveSign),
+                  dailySign: asString(daily?.sign),
+                  cuspFromProfile: asString((user as any)?.cuspResult?.cuspName),
+                  cuspLabelForGemstone,
+                  normalised: cuspLabelForGemstone ? normaliseCuspLabelForLookup(cuspLabelForGemstone) : '',
                 });
 
                 return (

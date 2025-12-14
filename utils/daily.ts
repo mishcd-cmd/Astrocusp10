@@ -1,16 +1,17 @@
-// utils/daily.ts
 'use client';
 
 import { supabase } from '@/utils/supabase';
 
-// ----- Types -----
+/* =========================================================
+   TYPES
+========================================================= */
 export type HemiShort = 'NH' | 'SH';
 export type HemiAny = HemiShort | 'Northern' | 'Southern';
 
 export type DailyRow = {
   sign: string;
   hemisphere: 'Northern' | 'Southern';
-  date: string; // "YYYY-MM-DD"
+  date: string;
   daily_horoscope?: string;
   affirmation?: string;
   deeper_insight?: string;
@@ -18,73 +19,34 @@ export type DailyRow = {
   [key: string]: any;
 };
 
-// -------------------------------------------------------
-// Cusp name -> canonical sign label mapping
-// -------------------------------------------------------
-const CUSP_NAME_TO_SIGN: Record<string, string> = {
-  'cusp of power': 'Aries-Taurus Cusp',
-  'cusp of energy': 'Taurus-Gemini Cusp',
-  'cusp of magic': 'Gemini-Cancer Cusp',
-  'cusp of oscillation': 'Cancer-Leo Cusp',
-  'cusp of exposure': 'Leo-Virgo Cusp',
-  'cusp of beauty': 'Virgo-Libra Cusp',
-  'cusp of drama': 'Libra-Scorpio Cusp',
-  'cusp of revolution': 'Scorpio-Sagittarius Cusp',
-  'cusp of prophecy': 'Sagittarius-Capricorn Cusp',
-  'cusp of mystery': 'Capricorn-Aquarius Cusp',
-  'cusp of sensitivity': 'Aquarius-Pisces Cusp',
-};
-
-function resolveSignLabelForDaily(input: string): {
-  lookupLabel: string;
-  originalLabel: string;
-  fromCuspMap: boolean;
-} {
-  const originalLabel = squashSpaces(input || '');
-  const key = originalLabel.toLowerCase();
-  const mapped = CUSP_NAME_TO_SIGN[key];
-
-  if (mapped) {
-    return { lookupLabel: mapped, originalLabel, fromCuspMap: true };
-  }
-  return { lookupLabel: originalLabel, originalLabel, fromCuspMap: false };
-}
-
-// ----- String helpers -----
-function toTitleCaseWord(w: string) {
-  return w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : '';
-}
-
-function normalizeDashesToHyphen(s: string) {
-  return (s || '').replace(/[\u2012\u2013\u2014\u2015]/g, '-');
-}
-
+/* =========================================================
+   STRING HELPERS
+========================================================= */
 function squashSpaces(s: string) {
   return (s || '').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeDashes(s: string) {
+  return (s || '').replace(/[_\u2012\u2013\u2014\u2015]/g, '-');
 }
 
 function stripTrailingCusp(s: string) {
   return s.replace(/\s*cusp\s*$/i, '').trim();
 }
 
-/** Strict display-style normalization (title case + en dash) */
-function normalizeSignForDaily(input: string): {
-  primaryWithCusp?: string; // "Aries–Taurus Cusp"
-  primaryNoCusp: string; // "Aries–Taurus" or "Aries"
-  parts: string[];
-  isCusp: boolean;
-} {
-  if (!input) return { primaryNoCusp: '', parts: [], isCusp: false };
+function toTitleCaseWord(w: string) {
+  return w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : '';
+}
 
-  let s = squashSpaces(input);
-  const isCusp = /\bcusp\b/i.test(s);
-  const hyphenBase = normalizeDashesToHyphen(s);
-  const noCusp = stripTrailingCusp(hyphenBase);
-
-  const parts = noCusp
+/* =========================================================
+   CANONICAL CUSP LABEL BUILDER
+========================================================= */
+function canonicalCuspLabel(input: string): string {
+  const clean = stripTrailingCusp(normalizeDashes(squashSpaces(input)));
+  const parts = clean
     .split('-')
-    .map((part) =>
-      part
+    .map(p =>
+      p
         .trim()
         .split(' ')
         .map(toTitleCaseWord)
@@ -92,235 +54,145 @@ function normalizeSignForDaily(input: string): {
     )
     .filter(Boolean);
 
-  const baseEnDash = parts.join('–');
-  const primaryNoCusp = baseEnDash;
-  const primaryWithCusp = isCusp ? `${baseEnDash} Cusp` : undefined;
-
-  return { primaryWithCusp, primaryNoCusp, parts, isCusp };
-}
-
-// ----- Comparison-focused canonicalisers -----
-function canonSignForCompare(s: string) {
-  const hyph = normalizeDashesToHyphen(s);
-  return squashSpaces(hyph).toLowerCase();
-}
-function canonSignNoCusp(s: string) {
-  return canonSignForCompare(stripTrailingCusp(s));
-}
-
-/** Build sign attempts in cusp-first order */
-function buildSignAttemptsForDaily(
-  inputLabel: string,
-  opts?: { allowTrueSignFallback?: boolean }
-): string[] {
-  const { primaryWithCusp, primaryNoCusp, parts, isCusp } = normalizeSignForDaily(inputLabel);
-  const allowFallback = !!opts?.allowTrueSignFallback;
-
-  const list: string[] = [];
-  if (primaryWithCusp) list.push(primaryWithCusp);
-  if (primaryWithCusp) list.push(primaryWithCusp.replace(/–/g, '-'));
-  if (primaryNoCusp) list.push(primaryNoCusp);
-  if (primaryNoCusp) list.push(primaryNoCusp.replace(/–/g, '-'));
-
-  if (!isCusp || allowFallback) {
-    for (const p of parts) if (p) list.push(p);
+  if (parts.length >= 2) {
+    return `${parts.join('–')} Cusp`;
   }
 
-  return [...new Set(list)].filter(Boolean);
+  return parts[0] ?? input;
 }
 
-// Hemisphere normalisation to match DB
+/* =========================================================
+   CUSP NAME MAP (marketing names → canonical)
+========================================================= */
+const CUSP_NAME_TO_SIGN: Record<string, string> = {
+  'cusp of power': 'Aries–Taurus Cusp',
+  'cusp of energy': 'Taurus–Gemini Cusp',
+  'cusp of magic': 'Gemini–Cancer Cusp',
+  'cusp of oscillation': 'Cancer–Leo Cusp',
+  'cusp of exposure': 'Leo–Virgo Cusp',
+  'cusp of beauty': 'Virgo–Libra Cusp',
+  'cusp of drama': 'Libra–Scorpio Cusp',
+  'cusp of revolution': 'Scorpio–Sagittarius Cusp',
+  'cusp of prophecy': 'Sagittarius–Capricorn Cusp',
+  'cusp of mystery': 'Capricorn–Aquarius Cusp',
+  'cusp of sensitivity': 'Aquarius–Pisces Cusp',
+};
+
+function resolveCanonicalSign(input: string): {
+  canonical: string;
+  lookupAttempts: string[];
+  isCusp: boolean;
+} {
+  const original = squashSpaces(input);
+  const key = original.toLowerCase();
+
+  if (CUSP_NAME_TO_SIGN[key]) {
+    const canon = CUSP_NAME_TO_SIGN[key];
+    return {
+      canonical: canon,
+      lookupAttempts: [
+        canon,
+        canon.replace('–', '-'),
+        stripTrailingCusp(canon),
+        stripTrailingCusp(canon).replace('–', '-'),
+      ],
+      isCusp: true,
+    };
+  }
+
+  const norm = normalizeDashes(original);
+  const isCusp = /\bcusp\b/i.test(norm) || norm.includes('-');
+
+  if (isCusp) {
+    const canon = canonicalCuspLabel(norm);
+    return {
+      canonical: canon,
+      lookupAttempts: [
+        canon,
+        canon.replace('–', '-'),
+        stripTrailingCusp(canon),
+        stripTrailingCusp(canon).replace('–', '-'),
+      ],
+      isCusp: true,
+    };
+  }
+
+  return {
+    canonical: original,
+    lookupAttempts: [original],
+    isCusp: false,
+  };
+}
+
+/* =========================================================
+   HEMISPHERE
+========================================================= */
 function hemiToDB(hemi?: HemiAny): 'Northern' | 'Southern' {
   const v = (hemi || 'Southern').toString().toLowerCase();
-  if (v === 'northern' || v === 'nh') return 'Northern';
-  return 'Southern';
+  return v === 'northern' || v === 'nh' ? 'Northern' : 'Southern';
 }
 
-// ----- Date helpers -----
+/* =========================================================
+   DATE HELPERS
+========================================================= */
 function pad2(n: number) {
   return `${n}`.padStart(2, '0');
 }
 
-function ymdInTZ(d: Date, timeZone: string): string {
-  const y = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric' }).format(d);
-  const m = new Intl.DateTimeFormat('en-US', { timeZone, month: '2-digit' }).format(d);
-  const day = new Intl.DateTimeFormat('en-US', { timeZone, day: '2-digit' }).format(d);
-  return `${y}-${m}-${day}`;
-}
-
-function getUserTimeZone(): string {
-  try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return tz || 'UTC';
-  } catch {
-    return 'UTC';
-  }
-}
-
-function anchorLocal(d = new Date()) {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
 function anchorUTC(d = new Date()) {
   return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
 }
 
-function buildDailyAnchors(d = new Date()): string[] {
-  const userTZ = getUserTimeZone();
-
-  const todayUser = ymdInTZ(d, userTZ);
-  const yesterdayUser = ymdInTZ(new Date(d.getTime() - 86400000), userTZ);
-  const tomorrowUser = ymdInTZ(new Date(d.getTime() + 86400000), userTZ);
-
-  const todayUTC = anchorUTC(d);
-  const todayLocal = anchorLocal(d);
-
-  return [...new Set([todayUser, todayUTC, todayLocal, yesterdayUser, tomorrowUser])].filter(Boolean);
+function buildDailyAnchors(d = new Date()) {
+  const today = anchorUTC(d);
+  const yesterday = anchorUTC(new Date(d.getTime() - 86400000));
+  const tomorrow = anchorUTC(new Date(d.getTime() + 86400000));
+  return [today, yesterday, tomorrow];
 }
 
-// ----- Cache helpers -----
-const CACHE_VERSION = 'v3';
-
-function cacheKeyDaily(userId: string | undefined, sign: string, hemi: 'Northern' | 'Southern', ymd: string) {
-  return `${CACHE_VERSION}:daily:${userId ?? 'anon'}:${sign}:${hemi}:${ymd}`;
-}
-function getFromCache<T = unknown>(key: string): T | null {
-  try {
-    if (typeof window === 'undefined') return null;
-    const raw = window.localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : null;
-  } catch {
-    return null;
-  }
-}
-function setInCache(key: string, value: unknown) {
-  try {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // ignore
-  }
-}
-
-/** Does a DB row's sign match a candidate once both are normalized? */
-function rowMatchesSign(rowSign: string, candidate: string) {
-  if (!rowSign || !candidate) return false;
-
-  const canRow = canonSignForCompare(rowSign);
-  const canRowNoCusp = canonSignNoCusp(rowSign);
-
-  const canCand = canonSignForCompare(candidate);
-  const canCandNoCusp = canonSignNoCusp(candidate);
-
-  return (
-    canRow === canCand ||
-    canRow === canCandNoCusp ||
-    canRowNoCusp === canCand ||
-    canRowNoCusp === canCandNoCusp
-  );
-}
-
-// ----- Extra-lenient picker for odd DB sign strings -----
-function normalizeLooseSign(raw: string | null | undefined): string {
-  let s = (raw ?? '').toLowerCase();
-  s = s.replace(/\(.*?\)/g, '');
-  s = s
-    .replace(/\bnorthern hemisphere\b/g, '')
-    .replace(/\bsouthern hemisphere\b/g, '')
-    .replace(/\bnorthern\b/g, '')
-    .replace(/\bsouthern\b/g, '');
-  s = normalizeDashesToHyphen(s);
-  s = s.replace(/[^a-z]/g, '');
-  return s.trim();
-}
-
-function pickBestDailyRow(rows: DailyRow[], signAttempts: string[]): DailyRow | null {
-  if (!rows || rows.length === 0) return null;
-
-  const attemptsLoose = signAttempts.map((a) => normalizeLooseSign(a)).filter(Boolean);
-  if (!attemptsLoose.length) return rows[0] ?? null;
-
-  for (const row of rows) {
-    const rowLoose = normalizeLooseSign(row.sign);
-    if (!rowLoose) continue;
-
-    const ok = attemptsLoose.some((a) => a && (rowLoose === a || rowLoose.includes(a) || a.includes(rowLoose)));
-    if (ok) return row;
-  }
-
-  return rows[0] ?? null;
-}
-
-// ------------------------
-// DB fetchers
-// ------------------------
-
-// IMPORTANT FIX:
-// Select('*') so we do not silently lose affirmation/deeper when column names differ
-// across environments (eg daily_affirmation vs affirmation, deeper vs deeper_insight).
+/* =========================================================
+   DB FETCH
+========================================================= */
 async function fetchRowsForDate(
   date: string,
   hemi: 'Northern' | 'Southern',
   debug?: boolean
-): Promise<{ rows: DailyRow[]; error: any }> {
-  const { data, error } = await supabase.from('horoscope_cache').select('*').eq('hemisphere', hemi).eq('date', date);
+): Promise<DailyRow[]> {
+  const { data, error } = await supabase
+    .from('horoscope_cache')
+    .select('*')
+    .eq('hemisphere', hemi)
+    .eq('date', date);
 
   if (debug) {
-    console.log('[daily] (horoscope_cache:list)', {
+    console.log('[daily] DB rows', {
       date,
-      hemisphere: hemi,
-      error: error?.message || null,
-      count: Array.isArray(data) ? data.length : 0,
-      sampleSigns: Array.isArray(data) ? data.slice(0, 5).map((r: any) => r.sign) : [],
-      sampleKeys: Array.isArray(data) && data[0] ? Object.keys(data[0]).slice(0, 30) : [],
+      hemi,
+      count: data?.length ?? 0,
+      sample: data?.slice(0, 5)?.map(r => r.sign),
     });
   }
 
-  if (error) return { rows: [], error };
+  if (error || !data) return [];
 
-  const rows: DailyRow[] = (data || []).map((r: any) => {
-    // Flexible field resolution (fix for "daily only" showing)
-    const daily =
-      r.daily_horoscope ??
-      r.daily ??
-      r.horoscope ??
-      r.daily_text ??
-      r.dailyHoroscope ??
-      '';
-
-    const affirmation =
-      r.affirmation ??
-      r.daily_affirmation ??
-      r.affirmation_text ??
-      r.dailyAffirmation ??
-      '';
-
-    const deeper =
-      r.deeper_insight ??
-      r.deeper ??
-      r.deeper_text ??
-      r.daily_deeper ??
-      r.deeperInsight ??
-      '';
-
-    return {
-      sign: r.sign,
-      hemisphere: r.hemisphere,
-      date: r.date,
-      daily_horoscope: daily || '',
-      affirmation: affirmation || '',
-      deeper_insight: deeper || '',
-      __source_table__: 'horoscope_cache',
-      ...r,
-    };
-  });
-
-  return { rows, error: null };
+  return data.map((r: any) => ({
+    sign: r.sign,
+    hemisphere: r.hemisphere,
+    date: r.date,
+    daily_horoscope:
+      r.daily_horoscope ?? r.daily ?? r.horoscope ?? '',
+    affirmation:
+      r.affirmation ?? r.daily_affirmation ?? '',
+    deeper_insight:
+      r.deeper_insight ?? r.deeper ?? '',
+    __source_table__: 'horoscope_cache',
+    ...r,
+  }));
 }
 
-// ============================================================================
-// PUBLIC API
-// ============================================================================
-
+/* =========================================================
+   PUBLIC API
+========================================================= */
 export async function getDailyForecast(
   signIn: string,
   hemisphereIn: HemiAny,
@@ -329,112 +201,51 @@ export async function getDailyForecast(
     forceDate?: string;
     useCache?: boolean;
     debug?: boolean;
-    allowTrueSignFallback?: boolean;
   }
 ): Promise<DailyRow | null> {
   const debug = !!opts?.debug;
-  const userId = opts?.userId;
   const hemi = hemiToDB(hemisphereIn);
 
-  const today = new Date();
-  const anchors = opts?.forceDate ? [opts.forceDate] : buildDailyAnchors(today);
-
-  const { lookupLabel, originalLabel, fromCuspMap } = resolveSignLabelForDaily(signIn);
-
-  let signAttempts = buildSignAttemptsForDaily(lookupLabel, {
-    allowTrueSignFallback: !!opts?.allowTrueSignFallback,
-  });
-
-  if (originalLabel && !signAttempts.includes(originalLabel)) {
-    signAttempts = [...signAttempts, originalLabel];
-  }
+  const { canonical, lookupAttempts, isCusp } = resolveCanonicalSign(signIn);
+  const anchors = opts?.forceDate ? [opts.forceDate] : buildDailyAnchors();
 
   if (debug) {
-    console.log('[daily] attempts', {
-      originalSign: signIn,
-      lookupLabel,
-      fromCuspMap,
-      signAttempts,
+    console.log('[daily] resolve', {
+      input: signIn,
+      canonical,
+      lookupAttempts,
+      hemi,
       anchors,
-      hemisphere: hemi,
-      userTZ: getUserTimeZone(),
-      todayUTC: anchorUTC(today),
-      todayLocal: anchorLocal(today),
     });
   }
 
-  // Cache first
-  if (opts?.useCache !== false) {
-    for (const dateStr of anchors) {
-      for (const s of signAttempts) {
-        const key = cacheKeyDaily(userId, s, hemi, dateStr);
-        const cached = getFromCache<DailyRow>(key);
-        if (cached && cached.date === dateStr && cached.hemisphere === hemi && rowMatchesSign(cached.sign, s)) {
-          if (debug) {
-            console.log('💾 [daily] cache hit', { key, wanted: s, matchedRowSign: cached.sign, hemi, date: dateStr });
-          }
-          return cached;
-        }
-      }
-    }
-  }
-
-  // DB tries
-  for (const dateStr of anchors) {
-    if (debug) console.log(`[daily] Fetching list for date="${dateStr}", hemisphere="${hemi}"`);
-    const { rows, error } = await fetchRowsForDate(dateStr, hemi, debug);
-    if (error) continue;
+  for (const date of anchors) {
+    const rows = await fetchRowsForDate(date, hemi, debug);
     if (!rows.length) continue;
 
-    // Strict matcher
-    for (const cand of signAttempts) {
-      const matchStrict = rows.find((r) => rowMatchesSign(r.sign, cand));
-      if (matchStrict) {
-        // Cache under both candidate and row sign to maximise hits
-        setInCache(cacheKeyDaily(userId, cand, hemi, dateStr), matchStrict);
-        setInCache(cacheKeyDaily(userId, matchStrict.sign, hemi, dateStr), matchStrict);
+    for (const attempt of lookupAttempts) {
+      const match = rows.find(r =>
+        normalizeDashes(r.sign).toLowerCase().includes(
+          normalizeDashes(attempt).toLowerCase()
+        )
+      );
 
-        if (debug) {
-          console.log('[daily] ✅ MATCH (strict)', {
-            wantedAttempts: signAttempts,
-            matchedRowSign: matchStrict.sign,
-            hemi,
-            date: dateStr,
-            hasDaily: !!matchStrict.daily_horoscope,
-            hasAff: !!matchStrict.affirmation,
-            hasDeep: !!matchStrict.deeper_insight,
-          });
-        }
-        return matchStrict;
+      if (match) {
+        return {
+          ...match,
+          sign: isCusp ? canonical : match.sign,
+        };
       }
     }
-
-    // Lenient picker
-    const match = pickBestDailyRow(rows, signAttempts);
-    if (match) {
-      setInCache(cacheKeyDaily(userId, match.sign, hemi, dateStr), match);
-      if (debug) {
-        console.log('[daily] ✅ MATCH (lenient)', {
-          wantedAttempts: signAttempts,
-          matchedRowSign: match.sign,
-          hemi,
-          date: dateStr,
-          hasDaily: !!match.daily_horoscope,
-          hasAff: !!match.affirmation,
-          hasDeep: !!match.deeper_insight,
-        });
-      }
-      return match;
-    }
-
-    if (debug) console.log('[daily] no sign match among rows for date anchor; sample signs:', rows.slice(0, 5).map((r) => r.sign));
   }
 
-  if (debug) console.warn('[daily] not found for', { signAttempts, anchors, hemi });
+  if (debug) console.warn('[daily] not found', { signIn, hemi });
   return null;
 }
 
-/** Convenience wrapper for screens */
+/* =========================================================
+   SCREEN WRAPPER
+========================================================= */
 export async function getAccessibleHoroscope(
   user: any,
   opts?: {
@@ -443,10 +254,7 @@ export async function getAccessibleHoroscope(
     debug?: boolean;
   }
 ) {
-  const hemisphere: HemiAny =
-    user?.hemisphere === 'NH' || user?.hemisphere === 'SH'
-      ? user.hemisphere
-      : (user?.hemisphere as 'Northern' | 'Southern') || 'Southern';
+  const hemisphere: HemiAny = user?.hemisphere || 'Southern';
 
   const signLabel =
     user?.cuspResult?.cuspName ||
@@ -454,22 +262,17 @@ export async function getAccessibleHoroscope(
     user?.preferred_sign ||
     '';
 
-  const isCuspInput = /\bcusp\b/i.test(signLabel);
-
   const row = await getDailyForecast(signLabel, hemisphere, {
     userId: user?.id || user?.email,
     forceDate: opts?.forceDate,
-    useCache: opts?.useCache ?? true,
-    debug: opts?.debug ?? false,
-    // If the user is on a cusp, do NOT fall back to a pure sign by default
-    allowTrueSignFallback: isCuspInput ? false : true,
+    debug: opts?.debug,
   });
 
   if (!row) return null;
 
   return {
     date: row.date,
-    sign: row.sign,
+    sign: row.sign,               // ✅ NOW ALWAYS CANONICAL
     hemisphere: row.hemisphere,
     daily: row.daily_horoscope || '',
     affirmation: row.affirmation || '',
@@ -477,14 +280,3 @@ export async function getAccessibleHoroscope(
     raw: row,
   };
 }
-
-export const DailyHelpers = {
-  normalizeSignForDaily,
-  hemiToDB,
-  anchorLocal,
-  anchorUTC,
-  ymdInTZ,
-  buildDailyAnchors,
-  buildSignAttemptsForDaily,
-  cacheKeyDaily,
-};
