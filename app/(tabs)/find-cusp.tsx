@@ -1,5 +1,5 @@
 // app/(tabs)/find-cusp.tsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -27,14 +27,18 @@ import { getAstronomicalInsight } from '@/utils/astronomy';
 import { getBirthstoneForSign } from '@/utils/birthstones';
 import { supabase } from '@/utils/supabase';
 import { getUserData, saveUserData, type UserProfile } from '@/utils/userData';
+import { getCuspGemstoneAndRitual } from '@/utils/cuspData';
 
 // ---------- Helpers ----------
+function asString(v: any): string {
+  return typeof v === 'string' ? v : v == null ? '' : String(v);
+}
+
 function detectTimezone(location: string, hemisphere: 'Northern' | 'Southern'): string {
   const loc = (location || '').toLowerCase();
 
   // Australia
-  if (loc.includes('sydney') || loc.includes('melbourne') || loc.includes('canberra'))
-    return 'Australia/Sydney';
+  if (loc.includes('sydney') || loc.includes('melbourne') || loc.includes('canberra')) return 'Australia/Sydney';
   if (loc.includes('brisbane') || loc.includes('gold coast')) return 'Australia/Brisbane';
   if (loc.includes('perth')) return 'Australia/Perth';
   if (loc.includes('adelaide')) return 'Australia/Adelaide';
@@ -87,16 +91,94 @@ function validateTimeFormat(time: string): { isValid: boolean; message?: string 
   if (!/^\d{1,2}:\d{2}$/.test(trimmed)) {
     return { isValid: false, message: 'Time must be in HH:MM (24-hour) format, for example 14:30.' };
   }
-  const [h, m] = trimmed.split(':').map(n => parseInt(n, 10));
+  const [h, m] = trimmed.split(':').map((n) => parseInt(n, 10));
   if (h < 0 || h > 23) return { isValid: false, message: 'Hours must be 00-23.' };
   if (m < 0 || m > 59) return { isValid: false, message: 'Minutes must be 00-59.' };
   return { isValid: true };
 }
 
+/* ---------------------------------------------------
+ * Cusp gemstone lookup helpers (fixes key mismatches)
+ * --------------------------------------------------- */
+function normaliseCuspLabelForLookup(labelRaw: string): string {
+  let s = asString(labelRaw).trim();
+  if (!s) return '';
+
+  // underscore to hyphen
+  s = s.replace(/_/g, '-');
+
+  // normalise dash variants to hyphen
+  s = s.replace(/[—–]/g, '-');
+
+  // remove trailing "cusp" word
+  s = s.replace(/\s*cusp\s*$/i, '').trim();
+
+  // collapse spaces
+  s = s.replace(/\s+/g, ' ');
+
+  // title case each side of hyphen
+  const parts = s
+    .split('-')
+    .map((p) =>
+      p
+        .trim()
+        .split(' ')
+        .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ''))
+        .join(' ')
+        .trim()
+    )
+    .filter(Boolean);
+
+  if (parts.length >= 2) {
+    // prefer en dash between signs in canonical display
+    return `${parts.join('–')} Cusp`;
+  }
+
+  return s;
+}
+
+function getCuspGemstoneSafe(labelRaw: string) {
+  const original = asString(labelRaw).trim();
+  if (!original) return null;
+
+  const normalised = normaliseCuspLabelForLookup(original);
+
+  // Try multiple candidate keys because cuspData may use different dash styles / suffixes
+  const candidates = Array.from(
+    new Set([
+      original,
+      original.replace(/_/g, '-'),
+      original.replace(/[—–]/g, '-'),
+      original.replace(/[—–]/g, '–'),
+      normalised,
+      normalised.replace(/–/g, '-'),
+      normalised.replace(/ Cusp$/i, ''),
+      normalised.replace(/–/g, '-').replace(/ Cusp$/i, ''),
+      // Also try adding/removing " Cusp"
+      `${normalised}`.replace(/ Cusp$/i, ''),
+      `${normalised.replace(/ Cusp$/i, '')} Cusp`,
+      `${normalised.replace(/–/g, '-')}`,
+      `${normalised.replace(/–/g, '-')}`.replace(/ Cusp$/i, ''),
+      `${normalised.replace(/–/g, '-')}`.replace(/ Cusp$/i, '') + ' Cusp',
+    ])
+  );
+
+  for (const c of candidates) {
+    try {
+      const hit = getCuspGemstoneAndRitual(c);
+      if (hit?.gemstone) return hit;
+    } catch {
+      // ignore
+    }
+  }
+
+  return null;
+}
+
 // ---------- Screen ----------
 export default function FindCuspCalculator() {
   const [name, setName] = useState('');
-  const [birthDateISO, setBirthDateISO] = useState<string | null>(null); // from <BirthdateField />
+  const [birthDateISO, setBirthDateISO] = useState<string | null>(null);
   const [birthTime, setBirthTime] = useState('');
   const [birthLocation, setBirthLocation] = useState('');
   const [hemisphere, setHemisphere] = useState<'Northern' | 'Southern'>('Northern');
@@ -113,6 +195,12 @@ export default function FindCuspCalculator() {
       mounted.current = false;
     };
   }, []);
+
+  const cuspGemstone = useMemo(() => {
+    if (!result?.isOnCusp) return null;
+    const label = result.cuspName || '';
+    return getCuspGemstoneSafe(label);
+  }, [result]);
 
   const handleViewCuspDetails = () => {
     if (result?.cuspName) {
@@ -152,7 +240,6 @@ export default function FindCuspCalculator() {
         return;
       }
 
-      // Must be logged in for Cosmic Profile to persist
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -162,7 +249,6 @@ export default function FindCuspCalculator() {
         return;
       }
 
-      // Use existing profile if present so we keep createdAt and flags
       let existing: UserProfile | null = null;
       try {
         existing = await getUserData(true);
@@ -183,23 +269,8 @@ export default function FindCuspCalculator() {
         needsRecalc: false,
       };
 
-      console.log('[find-cusp] Saving cosmic profile with', {
-        email: profile.email,
-        name: profile.name,
-        birthDate: profile.birthDate,
-        birthTime: profile.birthTime,
-        birthLocation: profile.birthLocation,
-        hemisphere: profile.hemisphere,
-        isOnCusp: profile.cuspResult?.isOnCusp,
-        cuspName: profile.cuspResult?.cuspName,
-      });
-
       await saveUserData(profile);
-
-      // Force a fresh profile read so Cosmic Profile screen sees it
       await getUserData(true).catch(() => {});
-
-      console.log('[find-cusp] Cosmic profile saved successfully');
     } catch (e) {
       console.error('[find-cusp] Error saving cosmic profile', e);
       throw e;
@@ -212,13 +283,11 @@ export default function FindCuspCalculator() {
       await saveUserProfile(result);
     } catch (e: any) {
       console.warn('[find-cusp] Save failed (non-fatal for explore):', e?.message || e);
-      // Still allow navigation to explore
     }
     handleExploreHoroscope();
   };
 
   const handleCalculate = () => {
-    // Basic validation
     if (!name?.trim() || !birthDateISO || !birthTime?.trim() || !birthLocation?.trim()) {
       Alert.alert('Missing Information', 'Please fill in all fields to calculate your cusp.');
       return;
@@ -242,8 +311,8 @@ export default function FindCuspCalculator() {
 
       const timezone = detectTimezone(birthLocation, hemisphere);
       const birthInfo: BirthInfo = {
-        date: birthDateISO,  // ISO string (YYYY-MM-DD)
-        time: birthTime,     // "HH:mm"
+        date: birthDateISO,
+        time: birthTime,
         location: birthLocation,
         hemisphere,
         timezone,
@@ -274,6 +343,10 @@ export default function FindCuspCalculator() {
 
   // ---------- Result View ----------
   if (showResult && result) {
+    const fallbackBirthstone = result.isOnCusp
+      ? (cuspGemstone?.gemstone || 'Clear Quartz')
+      : (getBirthstoneForSign(result.primarySign)?.traditional || 'Clear Quartz');
+
     return (
       <View style={styles.container}>
         <CosmicBackground />
@@ -285,10 +358,7 @@ export default function FindCuspCalculator() {
               </View>
               <Text style={styles.title}>Your Cosmic Profile</Text>
 
-              <LinearGradient
-                colors={['rgba(212,175,55,0.2)', 'rgba(212,175,55,0.1)']}
-                style={styles.resultCard}
-              >
+              <LinearGradient colors={['rgba(212,175,55,0.2)', 'rgba(212,175,55,0.1)']} style={styles.resultCard}>
                 <Text style={styles.resultTitle}>
                   {result.isOnCusp ? 'You Are On A Cusp!' : 'Pure Sign Energy'}
                 </Text>
@@ -314,25 +384,30 @@ export default function FindCuspCalculator() {
                       {result.sunDegree}° {result.primarySign}
                     </Text>
                   </View>
+
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Birthstone:</Text>
-                    <Text style={styles.detailValue}>
-                      {result.cuspName
-                        ? 'Pyrope Garnet'
-                        : getBirthstoneForSign(result.primarySign)?.traditional || 'Clear Quartz'}
-                    </Text>
+                    <Text style={styles.detailValue}>{fallbackBirthstone}</Text>
                   </View>
                 </View>
 
-                {result.cuspName ? (
+                {result.isOnCusp && result.cuspName ? (
                   <View style={styles.birthstoneContainer}>
                     <View style={styles.birthstoneHeader}>
                       <Text style={styles.birthstoneTitle}>Your Cusp Birthstone</Text>
                     </View>
-                    <Text style={styles.birthstoneMeaning}>
-                      Combines Aries fire and Taurus grounding with energetic passion and stabilising strength.
-                      Enhances courage while anchoring ambition.
-                    </Text>
+
+                    {cuspGemstone?.gemstone ? (
+                      <>
+                        <Text style={styles.birthstoneMeaning}>
+                          {cuspGemstone.meaning || 'Your cusp birthstone supports your dual-sign energy.'}
+                        </Text>
+                      </>
+                    ) : (
+                      <Text style={styles.birthstoneMeaning}>
+                        No cusp gemstone match found for "{result.cuspName}". Check cuspData keys.
+                      </Text>
+                    )}
                   </View>
                 ) : null}
 
@@ -342,10 +417,7 @@ export default function FindCuspCalculator() {
                       <Text style={styles.detailsButtonText}>Explore Your Cusp</Text>
                     </TouchableOpacity>
                   ) : (
-                    <TouchableOpacity
-                      style={styles.signDetailsButton}
-                      onPress={() => handleViewSignDetails(result.primarySign)}
-                    >
+                    <TouchableOpacity style={styles.signDetailsButton} onPress={() => handleViewSignDetails(result.primarySign)}>
                       <Text style={styles.signDetailsButtonText}>Explore Your Sign</Text>
                     </TouchableOpacity>
                   )}
@@ -356,20 +428,12 @@ export default function FindCuspCalculator() {
                 </View>
               </LinearGradient>
 
-              <LinearGradient
-                colors={['rgba(139,157,195,0.2)', 'rgba(139,157,195,0.1)']}
-                style={styles.contextCard}
-              >
+              <LinearGradient colors={['rgba(139,157,195,0.2)', 'rgba(139,157,195,0.1)']} style={styles.contextCard}>
                 <Text style={styles.contextTitle}>Cosmic Context</Text>
                 <Text style={styles.contextText}>{astronomicalContext}</Text>
               </LinearGradient>
 
-              <CosmicButton
-                title="Calculate Again"
-                onPress={resetCalculator}
-                variant="outline"
-                style={styles.button}
-              />
+              <CosmicButton title="Calculate Again" onPress={resetCalculator} variant="outline" style={styles.button} />
             </View>
           </ScrollView>
         </SafeAreaView>
@@ -407,36 +471,20 @@ export default function FindCuspCalculator() {
 
                 <View style={styles.hemisphereButtons}>
                   <TouchableOpacity
-                    style={[
-                      styles.hemisphereButton,
-                      hemisphere === 'Northern' && styles.hemisphereButtonActive,
-                    ]}
+                    style={[styles.hemisphereButton, hemisphere === 'Northern' && styles.hemisphereButtonActive]}
                     onPress={() => setHemisphere('Northern')}
                   >
-                    <Text
-                      style={[
-                        styles.hemisphereButtonText,
-                        hemisphere === 'Northern' && styles.hemisphereButtonTextActive,
-                      ]}
-                    >
+                    <Text style={[styles.hemisphereButtonText, hemisphere === 'Northern' && styles.hemisphereButtonTextActive]}>
                       Northern Hemisphere
                     </Text>
                     <Text style={styles.hemisphereSubtext}>Winter solstice in December</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[
-                      styles.hemisphereButton,
-                      hemisphere === 'Southern' && styles.hemisphereButtonActive,
-                    ]}
+                    style={[styles.hemisphereButton, hemisphere === 'Southern' && styles.hemisphereButtonActive]}
                     onPress={() => setHemisphere('Southern')}
                   >
-                    <Text
-                      style={[
-                        styles.hemisphereButtonText,
-                        hemisphere === 'Southern' && styles.hemisphereButtonTextActive,
-                      ]}
-                    >
+                    <Text style={[styles.hemisphereButtonText, hemisphere === 'Southern' && styles.hemisphereButtonTextActive]}>
                       Southern Hemisphere
                     </Text>
                     <Text style={styles.hemisphereSubtext}>Summer solstice in December</Text>
@@ -448,16 +496,10 @@ export default function FindCuspCalculator() {
               <View style={styles.inputSection}>
                 <View style={styles.inputWithIcon}>
                   <UserIcon size={20} color="#8b9dc3" style={styles.inputIcon} />
-                  <CosmicInput
-                    label="Your Name"
-                    placeholder="Enter your name"
-                    value={name}
-                    onChangeText={setName}
-                  />
+                  <CosmicInput label="Your Name" placeholder="Enter your name" value={name} onChangeText={setName} />
                 </View>
 
                 <View style={styles.inputWithIcon}>
-                  {/* BirthdateField returns a valid ISO string via onValidISO */}
                   <BirthdateField initialISO={birthDateISO} onValidISO={setBirthDateISO} />
                 </View>
 
@@ -500,13 +542,7 @@ export default function FindCuspCalculator() {
                     : 'REVEAL MY CUSP!'
                 }
                 onPress={handleCalculate}
-                disabled={
-                  calculating ||
-                  !name?.trim() ||
-                  !birthDateISO ||
-                  !birthTime?.trim() ||
-                  !birthLocation?.trim()
-                }
+                disabled={calculating || !name?.trim() || !birthDateISO || !birthTime?.trim() || !birthLocation?.trim()}
                 loading={calculating}
                 style={styles.calculateButton}
               />
@@ -514,10 +550,7 @@ export default function FindCuspCalculator() {
               {/* Quick Navigation */}
               <View style={styles.quickNavSection}>
                 <Text style={styles.quickNavTitle}>Already know your sign?</Text>
-                <TouchableOpacity
-                  style={styles.quickNavButton}
-                  onPress={() => router.push('/(tabs)/astrology')}
-                >
+                <TouchableOpacity style={styles.quickNavButton} onPress={() => router.push('/(tabs)/astrology')}>
                   <Text style={styles.quickNavText}>Go to Daily Horoscope</Text>
                 </TouchableOpacity>
               </View>
@@ -631,181 +664,47 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 24,
   },
-  signContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
+  signContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   primarySign: { fontSize: 32, fontFamily: 'Vazirmatn-Bold', color: '#e8e8e8' },
   cuspConnector: { fontSize: 24, fontFamily: 'Vazirmatn-Bold', color: '#d4af37', marginHorizontal: 16 },
   secondarySign: { fontSize: 32, fontFamily: 'Vazirmatn-Bold', color: '#e8e8e8' },
-  cuspName: {
-    fontSize: 16,
-    fontFamily: 'Vazirmatn-Medium',
-    color: '#d4af37',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  description: {
-    fontSize: 16,
-    fontFamily: 'Vazirmatn-Regular',
-    color: '#e8e8e8',
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 20,
-  },
+  cuspName: { fontSize: 16, fontFamily: 'Vazirmatn-Medium', color: '#d4af37', textAlign: 'center', marginBottom: 20 },
+  description: { fontSize: 16, fontFamily: 'Vazirmatn-Regular', color: '#e8e8e8', textAlign: 'center', lineHeight: 24, marginBottom: 20 },
 
-  detailsContainer: {
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(212,175,55,0.2)',
-    gap: 8,
-    marginBottom: 20,
-  },
+  detailsContainer: { paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(212,175,55,0.2)', gap: 8, marginBottom: 20 },
   detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   detailLabel: { fontSize: 14, fontFamily: 'Vazirmatn-Medium', color: '#8b9dc3' },
   detailValue: { fontSize: 14, fontFamily: 'Vazirmatn-SemiBold', color: '#d4af37' },
 
-  birthstoneContainer: {
-    marginBottom: 20,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(212,175,55,0.2)',
-  },
+  birthstoneContainer: { marginBottom: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(212,175,55,0.2)' },
   birthstoneHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   birthstoneTitle: { fontSize: 14, fontFamily: 'Vazirmatn-Medium', color: '#d4af37' },
-  birthstoneMeaning: {
-    fontSize: 14,
-    fontFamily: 'Vazirmatn-Regular',
-    color: '#8b9dc3',
-    lineHeight: 20,
-  },
+  birthstoneMeaning: { fontSize: 14, fontFamily: 'Vazirmatn-Regular', color: '#8b9dc3', lineHeight: 20 },
 
   actionButtons: { gap: 12, marginTop: 8 },
-  detailsButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    backgroundColor: 'rgba(212,175,55,0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.3)',
-  },
-  detailsButtonText: {
-    fontSize: 14,
-    fontFamily: 'Vazirmatn-SemiBold',
-    color: '#d4af37',
-  },
+  detailsButton: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 8, backgroundColor: 'rgba(212,175,55,0.1)', borderWidth: 1, borderColor: 'rgba(212,175,55,0.3)' },
+  detailsButtonText: { fontSize: 14, fontFamily: 'Vazirmatn-SemiBold', color: '#d4af37' },
 
-  signDetailsButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    backgroundColor: 'rgba(212,175,55,0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.3)',
-  },
-  signDetailsButtonText: {
-    fontSize: 14,
-    fontFamily: 'Vazirmatn-SemiBold',
-    color: '#d4af37',
-  },
+  signDetailsButton: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 8, backgroundColor: 'rgba(212,175,55,0.1)', borderWidth: 1, borderColor: 'rgba(212,175,55,0.3)' },
+  signDetailsButtonText: { fontSize: 14, fontFamily: 'Vazirmatn-SemiBold', color: '#d4af37' },
 
-  horoscopeButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    backgroundColor: 'rgba(139,157,195,0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(139,157,195,0.3)',
-  },
-  horoscopeButtonText: {
-    fontSize: 14,
-    fontFamily: 'Vazirmatn-SemiBold',
-    color: '#8b9dc3',
-  },
+  horoscopeButton: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 8, backgroundColor: 'rgba(139,157,195,0.1)', borderWidth: 1, borderColor: 'rgba(139,157,195,0.3)' },
+  horoscopeButtonText: { fontSize: 14, fontFamily: 'Vazirmatn-SemiBold', color: '#8b9dc3' },
 
-  contextCard: {
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(139,157,195,0.3)',
-  },
-  contextTitle: {
-    fontSize: 18,
-    fontFamily: 'Vazirmatn-Bold',
-    color: '#8b9dc3',
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  contextText: {
-    fontSize: 14,
-    fontFamily: 'Vazirmatn-Regular',
-    color: '#e8e8e8',
-    textAlign: 'center',
-    lineHeight: 20,
-  },
+  contextCard: { borderRadius: 16, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: 'rgba(139,157,195,0.3)' },
+  contextTitle: { fontSize: 18, fontFamily: 'Vazirmatn-Bold', color: '#8b9dc3', textAlign: 'center', marginBottom: 12 },
+  contextText: { fontSize: 14, fontFamily: 'Vazirmatn-Regular', color: '#e8e8e8', textAlign: 'center', lineHeight: 20 },
 
   button: { marginTop: 16 },
 
-  birthTimeNote: {
-    backgroundColor: 'rgba(139,157,195,0.1)',
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(139,157,195,0.2)',
-  },
-  birthTimeNoteText: {
-    fontSize: 12,
-    fontFamily: 'Vazirmatn-Regular',
-    color: '#e8e8e8',
-    textAlign: 'center',
-    lineHeight: 16,
-  },
+  birthTimeNote: { backgroundColor: 'rgba(139,157,195,0.1)', borderRadius: 8, padding: 12, marginTop: 8, borderWidth: 1, borderColor: 'rgba(139,157,195,0.2)' },
+  birthTimeNoteText: { fontSize: 12, fontFamily: 'Vazirmatn-Regular', color: '#e8e8e8', textAlign: 'center', lineHeight: 16 },
 
-  locationNote: {
-    backgroundColor: 'rgba(139,157,195,0.06)',
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(139,157,195,0.2)',
-  },
-  locationNoteText: {
-    fontSize: 12,
-    fontFamily: 'Vazirmatn-Regular',
-    color: '#e8e8e8',
-    textAlign: 'center',
-    lineHeight: 16,
-  },
+  locationNote: { backgroundColor: 'rgba(139,157,195,0.06)', borderRadius: 8, padding: 12, marginTop: 8, borderWidth: 1, borderColor: 'rgba(139,157,195,0.2)' },
+  locationNoteText: { fontSize: 12, fontFamily: 'Vazirmatn-Regular', color: '#e8e8e8', textAlign: 'center', lineHeight: 16 },
 
   quickNavSection: { marginTop: 32, alignItems: 'center' },
-  quickNavTitle: {
-    fontSize: 14,
-    fontFamily: 'Vazirmatn-Regular',
-    color: '#8b9dc3',
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  quickNavButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    backgroundColor: 'rgba(26,26,46,0.4)',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(139,157,195,0.3)',
-  },
-  quickNavText: {
-    fontSize: 14,
-    fontFamily: 'Vazirmatn-Medium',
-    color: '#8b9dc3',
-  },
+  quickNavTitle: { fontSize: 14, fontFamily: 'Vazirmatn-Regular', color: '#8b9dc3', textAlign: 'center', marginBottom: 12 },
+  quickNavButton: { paddingVertical: 12, paddingHorizontal: 24, backgroundColor: 'rgba(26,26,46,0.4)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(139,157,195,0.3)' },
+  quickNavText: { fontSize: 14, fontFamily: 'Vazirmatn-Medium', color: '#8b9dc3' },
 });
