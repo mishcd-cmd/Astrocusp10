@@ -1,83 +1,105 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import {
-  getBirthstoneInfo,
-  getEnhancedZodiacInfo,
-  getAstrologicalHouse,
-} from '@/utils/zodiacData';
-
-// Use the cusp + pure sign birthstone tables you pasted earlier
-import {
-  getBirthstoneForSign,
-  getBirthstoneForCusp,
-} from '@/utils/birthstones';
+import { getEnhancedZodiacInfo, getAstrologicalHouse } from '@/utils/zodiacData';
+import { getBirthstoneForSign, getBirthstoneForCusp } from '@/utils/birthstones';
 
 interface BirthstoneInfoProps {
-  sign: string; // can be "Leo" OR something cusp-like
+  // Can be a pure sign ("Leo") or a cusp name ("Leo-Virgo" or "Leo–Virgo")
+  sign: string;
 }
 
-function normaliseCuspKey(input: string) {
-  return (input || '')
-    .replace(/\u2013/g, '-') // en dash to hyphen
-    .replace(/\u2014/g, '-') // em dash to hyphen
-    .replace(/\s+/g, ' ')
-    .trim();
+type CuspStone = {
+  gemstone: string;
+  meaning: string;
+  cuspName?: string;
+  dateRange?: string;
+};
+
+function isProbablyCuspName(name: string) {
+  return name.includes('–') || name.includes('-');
 }
 
-function isCuspSign(input: string) {
-  const s = normaliseCuspKey(input).toLowerCase();
-  return s.includes('cusp') || s.includes('–') || s.includes('-');
+function normaliseCuspKey(raw: string) {
+  return raw.replace(/[—–]/g, '-').trim();
 }
 
 export default function BirthstoneInfo({ sign }: BirthstoneInfoProps) {
-  const cuspMode = useMemo(() => isCuspSign(sign), [sign]);
+  const safeName = useMemo(() => (sign || '').trim(), [sign]);
 
-  // Pure sign data (from zodiacData)
-  const zodiacInfo = useMemo(() => getEnhancedZodiacInfo(sign), [sign]);
+  const isCusp = useMemo(() => isProbablyCuspName(safeName), [safeName]);
+
+  // Pure sign rich info
+  const zodiacInfo = useMemo(() => {
+    if (!safeName || isCusp) return null;
+    return getEnhancedZodiacInfo(safeName);
+  }, [safeName, isCusp]);
+
   const houseInfo = useMemo(() => {
-    return zodiacInfo ? getAstrologicalHouse(zodiacInfo.rulingHouse) : null;
+    if (!zodiacInfo) return null;
+    return getAstrologicalHouse(zodiacInfo.rulingHouse);
   }, [zodiacInfo]);
 
-  // Pure sign birthstones (existing)
-  const pureBirthstones = useMemo(() => getBirthstoneInfo(sign), [sign]);
+  // Birthstone resolution
+  const [cuspStone, setCuspStone] = useState<CuspStone | null>(null);
 
-  // Cusp birthstone (from your new tables)
-  const cuspBirthstone = useMemo(() => {
-    if (!cuspMode) return null;
+  const signStones = useMemo(() => {
+    if (!safeName || isCusp) return null;
+    const s = getBirthstoneForSign(safeName);
+    if (!s) return null;
+    return {
+      traditional: s.traditional,
+      alternative: s.alternative,
+      meaning: s.meaning,
+    };
+  }, [safeName, isCusp]);
 
-    // Try a few likely formats:
-    // - "Sagittarius–Capricorn"
-    // - "Sagittarius-Capricorn"
-    // - "Cusp of Prophecy" etc
-    const key = normaliseCuspKey(sign)
-      .replace(/cusp/gi, '')
-      .replace(/\s+of\s+/gi, ' of ')
-      .trim();
+  useEffect(() => {
+    let mounted = true;
 
-    const found = getBirthstoneForCusp(key as any);
-    return found || null;
-  }, [cuspMode, sign]);
+    (async () => {
+      if (!safeName || !isCusp) {
+        if (mounted) setCuspStone(null);
+        return;
+      }
 
-  // Fallback for pure sign birthstone table you pasted earlier
-  const pureFallback = useMemo(() => {
-    if (cuspMode) return null;
-    return getBirthstoneForSign(sign) || null;
-  }, [cuspMode, sign]);
+      try {
+        const cuspKey = normaliseCuspKey(safeName);
+        const res = await getBirthstoneForCusp(cuspKey);
 
-  // Decide what to show
-  const showCusp = cuspMode && cuspBirthstone;
-  const showPure = !cuspMode && (pureBirthstones || pureFallback);
+        if (!mounted) return;
 
-  if (!showCusp && !showPure && !zodiacInfo && !houseInfo) {
-    return null;
-  }
+        if (res?.gemstone) {
+          setCuspStone({
+            gemstone: res.gemstone,
+            meaning: res.meaning || '',
+            cuspName: res.cuspName,
+            dateRange: res.dateRange,
+          });
+        } else {
+          setCuspStone(null);
+        }
+      } catch (e) {
+        console.warn('[BirthstoneInfo] cusp stone resolve failed', e);
+        if (mounted) setCuspStone(null);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [safeName, isCusp]);
+
+  // Nothing to show
+  if (!safeName) return null;
+  if (!isCusp && !signStones) return null;
+  if (isCusp && !cuspStone) return null;
 
   return (
     <ScrollView style={styles.container}>
-      {/* Zodiac Sign Overview (only for pure signs) */}
-      {!cuspMode && zodiacInfo && (
+      {/* Zodiac Sign Overview (pure signs only) */}
+      {zodiacInfo && (
         <LinearGradient
           colors={['rgba(212, 175, 55, 0.2)', 'rgba(212, 175, 55, 0.1)']}
           style={styles.zodiacCard}
@@ -116,17 +138,24 @@ export default function BirthstoneInfo({ sign }: BirthstoneInfoProps) {
         </LinearGradient>
       )}
 
-      {/* Astrological House (only for pure signs) */}
-      {!cuspMode && houseInfo && (
+      {/* Astrological House (pure signs only) */}
+      {houseInfo && (
         <LinearGradient
           colors={['rgba(139, 157, 195, 0.2)', 'rgba(139, 157, 195, 0.1)']}
           style={styles.houseCard}
         >
           <Text style={styles.houseTitle}>
             {houseInfo.number}
-            {houseInfo.number === 1 ? 'st' : houseInfo.number === 2 ? 'nd' : houseInfo.number === 3 ? 'rd' : 'th'}{' '}
+            {houseInfo.number === 1
+              ? 'st'
+              : houseInfo.number === 2
+              ? 'nd'
+              : houseInfo.number === 3
+              ? 'rd'
+              : 'th'}{' '}
             House: {houseInfo.name}
           </Text>
+
           <Text style={styles.houseDescription}>{houseInfo.description}</Text>
 
           <View style={styles.themesContainer}>
@@ -143,52 +172,40 @@ export default function BirthstoneInfo({ sign }: BirthstoneInfoProps) {
       )}
 
       {/* Birthstones */}
-      {showCusp ? (
-        <LinearGradient
-          colors={['rgba(212, 175, 55, 0.15)', 'rgba(212, 175, 55, 0.05)']}
-          style={styles.birthstoneCard}
-        >
-          <Text style={styles.title}>Cusp Birthstone</Text>
+      <LinearGradient
+        colors={['rgba(212, 175, 55, 0.15)', 'rgba(212, 175, 55, 0.05)']}
+        style={styles.birthstoneCard}
+      >
+        <Text style={styles.title}>{isCusp ? 'Cusp Birthstone' : 'Birthstones'}</Text>
 
-          <View style={styles.stoneContainerSingle}>
-            <View style={styles.stoneItem}>
-              <Text style={styles.stoneLabel}>{cuspBirthstone?.cuspName || 'Your Cusp'}</Text>
-              <Text style={styles.stoneName}>{cuspBirthstone?.gemstone}</Text>
+        {isCusp && cuspStone ? (
+          <>
+            <View style={styles.stoneContainerSingle}>
+              <View style={styles.stoneItem}>
+                <Text style={styles.stoneLabel}>Gemstone</Text>
+                <Text style={styles.stoneName}>{cuspStone.gemstone}</Text>
+              </View>
             </View>
-          </View>
-
-          {!!cuspBirthstone?.meaning && (
-            <Text style={styles.description}>{cuspBirthstone.meaning}</Text>
-          )}
-        </LinearGradient>
-      ) : showPure ? (
-        <LinearGradient
-          colors={['rgba(212, 175, 55, 0.15)', 'rgba(212, 175, 55, 0.05)']}
-          style={styles.birthstoneCard}
-        >
-          <Text style={styles.title}>Birthstones</Text>
-
-          <View style={styles.stoneContainer}>
-            <View style={styles.stoneItem}>
-              <Text style={styles.stoneLabel}>Traditional</Text>
-              <Text style={styles.stoneName}>
-                {pureBirthstones?.traditional || pureFallback?.traditional || ''}
-              </Text>
+            {!!cuspStone.meaning && <Text style={styles.description}>{cuspStone.meaning}</Text>}
+          </>
+        ) : (
+          <>
+            <View style={styles.stoneContainer}>
+              <View style={styles.stoneItem}>
+                <Text style={styles.stoneLabel}>Traditional</Text>
+                <Text style={styles.stoneName}>{signStones?.traditional}</Text>
+              </View>
+              <View style={styles.stoneItem}>
+                <Text style={styles.stoneLabel}>Alternative</Text>
+                <Text style={styles.stoneName}>{signStones?.alternative}</Text>
+              </View>
             </View>
-            <View style={styles.stoneItem}>
-              <Text style={styles.stoneLabel}>Alternative</Text>
-              <Text style={styles.stoneName}>
-                {pureBirthstones?.alternative || pureFallback?.alternative || ''}
-              </Text>
-            </View>
-          </View>
-
-          <Text style={styles.description}>
-            {(pureFallback?.meaning && pureFallback.meaning) ||
-              `Birthstones are believed to bring good fortune and amplify your natural ${sign} energy when worn or kept close.`}
-          </Text>
-        </LinearGradient>
-      ) : null}
+            <Text style={styles.description}>
+              Birthstones are believed to bring good fortune and amplify your natural energy when worn or kept close.
+            </Text>
+          </>
+        )}
+      </LinearGradient>
     </ScrollView>
   );
 }
@@ -203,21 +220,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(212, 175, 55, 0.3)',
   },
-  zodiacHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
+  zodiacHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   zodiacSymbol: { fontSize: 32, color: '#d4af37', marginRight: 12 },
   zodiacName: { fontSize: 24, fontFamily: 'PlayfairDisplay-Bold', color: '#e8e8e8' },
-  zodiacDates: {
-    fontSize: 16,
-    fontFamily: 'Inter-Medium',
-    color: '#8b9dc3',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
+  zodiacDates: { fontSize: 16, fontFamily: 'Inter-Medium', color: '#8b9dc3', textAlign: 'center', marginBottom: 16 },
+
   zodiacDetails: { marginBottom: 16 },
   detailRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   detailLabel: { fontSize: 14, fontFamily: 'Inter-Medium', color: '#8b9dc3' },
@@ -238,6 +245,7 @@ const styles = StyleSheet.create({
   },
   houseTitle: { fontSize: 18, fontFamily: 'PlayfairDisplay-Bold', color: '#8b9dc3', textAlign: 'center', marginBottom: 8 },
   houseDescription: { fontSize: 14, fontFamily: 'Inter-Regular', color: '#e8e8e8', textAlign: 'center', lineHeight: 20, marginBottom: 16 },
+
   themesContainer: { marginTop: 8 },
   themesTitle: { fontSize: 14, fontFamily: 'Inter-SemiBold', color: '#8b9dc3', marginBottom: 8 },
   themesList: { gap: 4 },
@@ -248,10 +256,17 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontFamily: 'PlayfairDisplay-Bold', color: '#d4af37', textAlign: 'center', marginBottom: 16 },
 
   stoneContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16, gap: 12 },
-  stoneContainerSingle: { flexDirection: 'row', justifyContent: 'center', marginBottom: 16 },
-  stoneItem: { flex: 1, alignItems: 'center', padding: 12, borderRadius: 8, backgroundColor: 'rgba(139, 157, 195, 0.15)' },
+  stoneContainerSingle: { marginBottom: 16 },
 
-  stoneLabel: { fontSize: 12, fontFamily: 'Inter-Medium', color: '#8b9dc3', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1, textAlign: 'center' },
+  stoneItem: {
+    flex: 1,
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(139, 157, 195, 0.15)',
+  },
+  stoneLabel: { fontSize: 12, fontFamily: 'Inter-Medium', color: '#8b9dc3', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 },
   stoneName: { fontSize: 16, fontFamily: 'PlayfairDisplay-Bold', color: '#e8e8e8', textAlign: 'center' },
+
   description: { fontSize: 14, fontFamily: 'Inter-Regular', color: '#8b9dc3', textAlign: 'center', lineHeight: 20, fontStyle: 'italic' },
 });
