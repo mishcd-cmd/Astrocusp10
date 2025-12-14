@@ -46,7 +46,7 @@ export const CUSP_GEMSTONES_RITUALS = [
     meaning: 'Grounds spiritual vision in action; awakens dormant courage gently.',
     ritualTitle: '🔥 Phoenix Pulse Spell',
     ritualDescription:
-      "Hold a **fire agate** to your chest. Light a red candle. Say aloud what you're releasing-one fear, one habit, one name. Burn a bay leaf with your intent written on it. Chant: *\"I rise, reborn. The fire feeds my beginning.\"*",
+      'Hold a **fire agate** to your chest. Light a red candle. Say aloud what you\'re releasing - one fear, one habit, one name. Burn a bay leaf with your intent written on it. Chant: *"I rise, reborn. The fire feeds my beginning."*',
   },
   {
     cusp: 'Aries–Taurus',
@@ -106,7 +106,7 @@ export const CUSP_GEMSTONES_RITUALS = [
     meaning: 'Harmonises logic and creativity; ideal for beauty, balance, and clarity.',
     ritualTitle: '🌸 Balance & Bloom Bath',
     ritualDescription:
-      'Draw a warm bath with rose petals, a dash of milk, and **ametrine**. Sink in and repeat: *"I balance what is seen and what is sacred."* Envision your energy harmonising-mind, body, and aesthetic soul.',
+      'Draw a warm bath with rose petals, a dash of milk, and **ametrine**. Sink in and repeat: *"I balance what is seen and what is sacred."* Envision your energy harmonising - mind, body, and aesthetic soul.',
   },
   {
     cusp: 'Libra–Scorpio',
@@ -126,7 +126,7 @@ export const CUSP_GEMSTONES_RITUALS = [
     meaning: 'Heightens intuition while encouraging risk and transformation.',
     ritualTitle: '🌪️ The Storm Sigil Spell',
     ritualDescription:
-      'On parchment, draw a spiral with a **chrysoberyl** beside you. In the spiral, write what you wish to radically change-personal or global. Say: *"Let my fire speak through fate; I am both storm and stillness."* Keep the stone close for seven days.',
+      'On parchment, draw a spiral with a **chrysoberyl** beside you. In the spiral, write what you wish to radically change - personal or global. Say: *"Let my fire speak through fate; I am both storm and stillness."* Keep the stone close for seven days.',
   },
   {
     cusp: 'Sagittarius–Capricorn',
@@ -140,48 +140,27 @@ export const CUSP_GEMSTONES_RITUALS = [
   },
 ];
 
-/* -------------------------
- * Normalisation helpers
- * ------------------------- */
-
 function asString(v: any): string {
   return typeof v === 'string' ? v : v == null ? '' : String(v);
 }
 
-function normaliseCuspKey(input: string): string {
-  let s = asString(input).trim();
-
-  // Normalise all dash variants to en dash
-  s = s.replace(/[—–-]/g, '–');
-
-  // Remove trailing "Cusp" if present
-  s = s.replace(/\s*Cusp\s*$/i, '').trim();
-
-  // Remove accidental double spaces
-  s = s.replace(/\s+/g, ' ');
-
-  // If someone stored "Pisces–Aries Cusp of X", keep only the first two sign words joined by dash
-  // This is conservative: it only acts if it can detect exactly two sign names.
-  const SIGN_WORDS = [
-    'Aries','Taurus','Gemini','Cancer','Leo','Virgo','Libra','Scorpio','Sagittarius','Capricorn','Aquarius','Pisces',
-  ];
-  const rx = new RegExp(`\\b(${SIGN_WORDS.join('|')})\\b\\s*–\\s*\\b(${SIGN_WORDS.join('|')})\\b`, 'i');
-  const m = s.match(rx);
-  if (m?.[1] && m?.[2]) {
-    const a = m[1][0].toUpperCase() + m[1].slice(1).toLowerCase();
-    const b = m[2][0].toUpperCase() + m[2].slice(1).toLowerCase();
-    s = `${a}–${b}`;
-  } else {
-    // Ensure dash spacing consistent if no match
-    s = s.replace(/\s*–\s*/g, '–');
-  }
-
-  return s;
+function normaliseDashes(s: string): string {
+  // Covers hyphen, non-breaking hyphen, figure dash, en dash, em dash, minus sign
+  return s.replace(/[\u2010\u2011\u2012\u2013\u2014\u2212-]/g, '–');
 }
 
-/* -------------------------
- * Public functions
- * ------------------------- */
+function normaliseCuspKey(s: string): string {
+  let x = asString(s).trim();
+  x = normaliseDashes(x);
+  x = x.replace(/\s+/g, ' ').trim();
+  x = x.replace(/\s*Cusp\s*$/i, '').trim();
+  x = x.replace(/\s*–\s*/g, '–').trim();
+  return x;
+}
+
+function normaliseTitle(s: string): string {
+  return asString(s).trim().toLowerCase().replace(/\s+/g, ' ');
+}
 
 // Function to get cusp details by name
 export function getCuspGemstoneAndRitual(cuspName: string): {
@@ -190,40 +169,64 @@ export function getCuspGemstoneAndRitual(cuspName: string): {
   ritualTitle: string;
   ritualDescription: string;
 } | null {
-  const original = asString(cuspName);
-  if (!original) return null;
+  const inputRaw = asString(cuspName).trim();
+  if (!inputRaw) return null;
 
-  const key = normaliseCuspKey(original);
+  const inputKey = normaliseCuspKey(inputRaw);
+  const inputTitle = normaliseTitle(inputRaw);
 
-  // Try several safe variants (some older records may be hyphenated or spaced)
-  const candidates = Array.from(
-    new Set([
-      original,
-      key,
-      key.replace(/[—–]/g, '-'),
-      key.replace(/\s*–\s*/g, '–'),
-      key.replace(/\s*–\s*/g, '-'),
-      key.replace(/\s*–\s*/g, ' - ').replace(/\s+/g, ' ').trim(),
-    ])
-  );
-
-  for (const candidate of candidates) {
-    const needle = normaliseCuspKey(candidate);
-
-    const cuspData = CUSP_GEMSTONES_RITUALS.find((c) => normaliseCuspKey(c.cusp) === needle);
-
-    if (cuspData) {
-      console.log('✅ [cuspData] matched cusp', { input: cuspName, candidate, needle, matched: cuspData.cusp });
+  // 1) Try matching by cusp key (Pisces–Aries)
+  for (const row of CUSP_GEMSTONES_RITUALS) {
+    const rowKey = normaliseCuspKey(row.cusp);
+    if (rowKey === inputKey) {
       return {
-        gemstone: cuspData.gemstone,
-        meaning: cuspData.meaning,
-        ritualTitle: cuspData.ritualTitle,
-        ritualDescription: cuspData.ritualDescription,
+        gemstone: row.gemstone,
+        meaning: row.meaning,
+        ritualTitle: row.ritualTitle,
+        ritualDescription: row.ritualDescription,
       };
     }
   }
 
-  console.log('❌ [cuspData] no match for cusp', { input: cuspName, normalised: key, candidates });
+  // 2) Try common label variants like "Pisces–Aries Cusp"
+  const candidates = Array.from(
+    new Set([
+      inputRaw,
+      inputKey,
+      `${inputKey} Cusp`,
+      inputKey.replace(/–/g, '-'),
+      `${inputKey.replace(/–/g, '-')} Cusp`,
+    ])
+  );
+
+  for (const c of candidates) {
+    const cKey = normaliseCuspKey(c);
+    const hit = CUSP_GEMSTONES_RITUALS.find((row) => normaliseCuspKey(row.cusp) === cKey);
+    if (hit) {
+      return {
+        gemstone: hit.gemstone,
+        meaning: hit.meaning,
+        ritualTitle: hit.ritualTitle,
+        ritualDescription: hit.ritualDescription,
+      };
+    }
+  }
+
+  // 3) Critical: match by cuspName title (The Cusp of Rebirth)
+  // This fixes the Daily page if it is passing the title instead of the key.
+  const hitByTitle = CUSP_GEMSTONES_RITUALS.find(
+    (row) => normaliseTitle(row.cuspName) === inputTitle
+  );
+
+  if (hitByTitle) {
+    return {
+      gemstone: hitByTitle.gemstone,
+      meaning: hitByTitle.meaning,
+      ritualTitle: hitByTitle.ritualTitle,
+      ritualDescription: hitByTitle.ritualDescription,
+    };
+  }
+
   return null;
 }
 
@@ -232,10 +235,7 @@ export function getPureSignGemstones(signName: string): {
   traditional: string;
   alternative: string;
 } | null {
-  const sign = asString(signName).trim();
-  if (!sign) return null;
-
-  const signData = PURE_SIGN_GEMSTONES.find((s) => s.sign === sign);
+  const signData = PURE_SIGN_GEMSTONES.find((sign) => sign.sign === signName);
   if (!signData) return null;
 
   return {
