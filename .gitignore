@@ -25,3 +25,12 @@ dist-ssr
 
 # Expo local state
 .expo/
+
+# Expo / EAS ignores
+.expo/
+android/
+ios/
+ios/build*
+
+# Expo local state
+.expo/
