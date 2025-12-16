@@ -6,6 +6,7 @@
 [build.environment]
   NODE_VERSION = "20.19.0"
 
+# Redirect root domain to www
 [[redirects]]
   from = "/*"
   to = "https://www.astrocusp.com.au/:splat"
@@ -13,6 +14,13 @@
   force = true
   conditions = { Host = ["astrocusp.com.au"] }
 
+# IMPORTANT: serve the privacy policy as a real file, not through the SPA router
+[[redirects]]
+  from = "/privacy.html"
+  to = "/privacy.html"
+  status = 200
+
+# Single page app fallback MUST be last
 [[redirects]]
   from = "/*"
   to = "/index.html"
