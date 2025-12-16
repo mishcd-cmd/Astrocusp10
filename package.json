@@ -10,7 +10,8 @@
     "ios": "expo run:ios",
     "build": "node scripts/export-web.js && node scripts/spa-fallback.js",
     "preview": "npx serve dist -p 4173",
-    "lint": "echo \"(optional) add ESLint here\""
+    "lint": "echo \"(optional) add ESLint here\"",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.1",
@@ -51,6 +52,7 @@
     "@types/react": "~18.2.79",
     "@types/react-dom": "~18.2.25",
     "babel-plugin-module-resolver": "^5.0.2",
+    "patch-package": "^8.0.1",
     "typescript": "~5.3.3"
   },
   "engines": {
