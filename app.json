@@ -17,7 +17,6 @@
     "ios": {
       "bundleIdentifier": "com.mutantmish.astrocusp",
       "buildNumber": "8",
-      "deploymentTarget": "15.0",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -42,7 +41,8 @@
         {
           "android": {
             "compileSdkVersion": 35,
-            "targetSdkVersion": 35
+            "targetSdkVersion": 35,
+            "buildToolsVersion": "35.0.0"
           }
         }
       ]
