@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
     "cli": {
       "version": ">= 12.0.0"
     },
@@ -24,3 +25,25 @@
     }
   }
   
+=======
+  "cli": {
+    "version": ">= 16.27.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal"
+    },
+    "production": {
+      "autoIncrement": true
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
+>>>>>>> 82c9d0a (Fix iOS filename casing for EAS)

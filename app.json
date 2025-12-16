@@ -4,15 +4,37 @@
     "slug": "astrocusp",
     "version": "1.0.1",
     "orientation": "portrait",
+    "scheme": "astrocusp",
+    "platforms": ["ios", "android", "web"],
+
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "light",
+
     "splash": {
       "image": "./assets/images/icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+
     "assetBundlePatterns": ["**/*"],
-    "scheme": "astrocusp",
+
+    "ios": {
+      "bundleIdentifier": "com.mish.astrocusp",
+      "buildNumber": "8",
+      "deploymentTarget": "15.0",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+
+    "android": {
+      "package": "com.mish.astrocusp",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#0f1121"
+      }
+    },
+
     "web": {
       "favicon": "./assets/images/favicon.png",
       "bundler": "metro",
@@ -23,13 +45,16 @@
         }
       }
     },
-    "platforms": ["ios", "android", "web"],
-    "ios": {
-      "bundleIdentifier": "com.astrocusp.app",
-      "deploymentTarget": "15.0"
-    },
+
     "plugins": [
-      "expo-router"
-    ]
+      "expo-router",
+      "expo-secure-store"
+    ],
+
+    "extra": {
+      "eas": {
+        "projectId": "7d4214fb-69e2-4174-84aa-ef4ffd7242e3"
+      }
+    }
   }
 }
