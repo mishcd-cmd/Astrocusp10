@@ -1,20 +1,17 @@
-// scripts/export-web.js
-const { spawn } = require('child_process');
+/* scripts/export-web.js */
+const { execSync } = require("child_process");
 
-// Clone current env and remove variables that can break project root detection
-const env = { ...process.env };
-delete env.EXPO_PROJECT_ROOT;
-delete env.EXPO_ROOT;
-delete env.REACT_NATIVE_PATH;
+function run(cmd) {
+  execSync(cmd, { stdio: "inherit" });
+}
 
-// NOTE: We rely on local expo via `npm exec`, not global `expo` command.
-const args = ['exec', 'expo', 'export', '--', '--platform', 'web', '--output-dir', 'dist'];
+try {
+  // Use Expo’s official web export. This generates a folder called "dist".
+  // Works with Expo SDK 51.
+  run("npx expo export -p web");
 
-console.log('> Running:', 'npm', args.join(' '));
-const child = spawn('npm', args, { stdio: 'inherit', env, cwd: process.cwd() });
-
-child.on('exit', (code) => process.exit(code ?? 0));
-child.on('error', (err) => {
-  console.error('Failed to spawn export:', err);
+  console.log("\n✅ Expo web export completed. Output folder: dist\n");
+} catch (err) {
+  console.error("\n❌ Web export failed.\n");
   process.exit(1);
-});
+}
