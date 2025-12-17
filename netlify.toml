@@ -6,7 +6,7 @@
 [build.environment]
   NODE_VERSION = "20.19.0"
 
-# Redirect root domain to www
+# Redirect apex domain to www
 [[redirects]]
   from = "/*"
   to = "https://www.astrocusp.com.au/:splat"
@@ -14,17 +14,19 @@
   force = true
   conditions = { Host = ["astrocusp.com.au"] }
 
-# IMPORTANT: serve the privacy policy as a real file, not through the SPA router
+# Serve privacy policy as a real file (must come before SPA rewrite)
 [[redirects]]
   from = "/privacy.html"
   to = "/privacy.html"
   status = 200
+  force = true
 
-# Single page app fallback MUST be last
+# SPA rewrite (must be last)
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+  force = true
 
 [[headers]]
   for = "/assets/*"
