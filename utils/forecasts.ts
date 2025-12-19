@@ -1,24 +1,22 @@
-// utils/forecasts.ts 
 import { supabase } from '@/utils/supabase';
 import { Platform } from 'react-native';
 
-// Fallback for web environment (Stackblitz sometimes strips Platform)
 if (typeof Platform === 'undefined') {
-  // shim for web bundlers (avoid TS directive to fix linter error)
   (global as any).Platform = { OS: 'web' };
 }
 
 import {
-  normalizeSignForDatabase,
   normalizeHemisphereLabel,
 } from '@/utils/signs';
 
+/* ----------------------------------------------------------------------------
+ * Types
+ * -------------------------------------------------------------------------- */
 export interface ForecastRow {
   sign: string;
-  hemisphere: string;        // "NH"/"SH" in DB (we keep string here)
-  date: string;              // "YYYY-MM-01"
-  monthly_forecast: string;  // DB column
-  // Optional alias if any legacy code expects ".forecast"
+  hemisphere: string;
+  date: string;
+  monthly_forecast: string;
   forecast?: string;
 }
 
@@ -30,9 +28,9 @@ export interface Forecast {
   forecast: string;
 }
 
-// ------------------------------------------------------------------------------------
-// AsyncStorage (no dynamic imports)
-// ------------------------------------------------------------------------------------
+/* ----------------------------------------------------------------------------
+ * Storage (web + native)
+ * -------------------------------------------------------------------------- */
 type AsyncStorageLike = {
   getItem(key: string): Promise<string | null>;
   setItem(key: string, value: string): Promise<void>;
@@ -41,253 +39,179 @@ type AsyncStorageLike = {
   multiRemove(keys: string[]): Promise<void>;
 };
 
-// Avoid dynamic `import()` so TS doesn't require different module setting
 let RNAsyncStorage: AsyncStorageLike | null = null;
 try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const mod = require('@react-native-async-storage/async-storage');
   RNAsyncStorage = mod?.default ?? mod;
 } catch {
   RNAsyncStorage = null;
 }
 
-// ------------------------------------------------------------------------------------
-// Race condition protection for network requests
-// ------------------------------------------------------------------------------------
-let requestId = 0;
-
-// ------------------------------------------------------------------------------------
-// Storage helpers (web + native)
-// ------------------------------------------------------------------------------------
 const storage = {
-  async getItem(key: string): Promise<string | null> {
+  async getItem(key: string) {
     if (Platform.OS === 'web' || !RNAsyncStorage) {
       try {
-        if (typeof window !== 'undefined' && window.localStorage) {
-          return window.localStorage.getItem(key);
-        }
-      } catch {}
-      return null;
+        return window?.localStorage?.getItem(key) ?? null;
+      } catch {
+        return null;
+      }
     }
     return RNAsyncStorage.getItem(key);
   },
-  async setItem(key: string, value: string): Promise<void> {
+  async setItem(key: string, value: string) {
     if (Platform.OS === 'web' || !RNAsyncStorage) {
       try {
-        if (typeof window !== 'undefined' && window.localStorage) {
-          window.localStorage.setItem(key, value);
-        }
+        window?.localStorage?.setItem(key, value);
       } catch {}
       return;
     }
     return RNAsyncStorage.setItem(key, value);
   },
-  async removeItem(key: string): Promise<void> {
+  async getAllKeys() {
     if (Platform.OS === 'web' || !RNAsyncStorage) {
       try {
-        if (typeof window !== 'undefined' && window.localStorage) {
-          window.localStorage.removeItem(key);
-        }
-      } catch {}
-      return;
-    }
-    return RNAsyncStorage.removeItem(key);
-  },
-  async getAllKeys(): Promise<string[]> {
-    if (Platform.OS === 'web' || !RNAsyncStorage) {
-      try {
-        if (typeof window !== 'undefined' && window.localStorage) {
-          return Object.keys(window.localStorage);
-        }
-      } catch {}
-      return [];
+        return Object.keys(window?.localStorage ?? {});
+      } catch {
+        return [];
+      }
     }
     return RNAsyncStorage.getAllKeys();
   },
-  async multiRemove(keys: string[]): Promise<void> {
+  async multiRemove(keys: string[]) {
     if (Platform.OS === 'web' || !RNAsyncStorage) {
       try {
-        if (typeof window !== 'undefined' && window.localStorage) {
-          keys.forEach(k => window.localStorage.removeItem(k));
-        }
+        keys.forEach(k => window?.localStorage?.removeItem(k));
       } catch {}
       return;
     }
     return RNAsyncStorage.multiRemove(keys);
-  }
+  },
 };
 
-// ------------------------------------------------------------------------------------
-// Utils
-// ------------------------------------------------------------------------------------
-function parseAsDate(d: string | undefined): number {
-  if (!d) return 0;
-  const t = Date.parse(d);
-  return Number.isNaN(t) ? 0 : t;
+/* ----------------------------------------------------------------------------
+ * Helpers
+ * -------------------------------------------------------------------------- */
+const ZODIAC = new Set([
+  'aries','taurus','gemini','cancer','leo','virgo',
+  'libra','scorpio','sagittarius','capricorn','aquarius','pisces'
+]);
+
+function asString(v: any): string {
+  return typeof v === 'string' ? v : v == null ? '' : String(v);
 }
 
-function getMonthlyForecastCacheKey(sign: string, hemisphere: string, month: string): string {
-  const hemiCode = hemisphere === 'Northern' ? 'NH' : hemisphere === 'Southern' ? 'SH' : hemisphere;
-  return `monthly_${sign}__${hemiCode}__${month}`;
-}
+function normaliseMonthlySign(raw: any): string {
+  const s = asString(raw).trim();
+  if (!s) return '';
 
-async function clearOldMonthlyCacheKeys() {
-  try {
-    const keys = await storage.getAllKeys();
-    const badKeys = keys.filter(key =>
-      key.startsWith('monthly_SH_') ||
-      key.startsWith('monthly_NH_') ||
-      (key.startsWith('monthly_') && !key.includes('__'))
-    );
-    if (badKeys.length > 0) {
-      await storage.multiRemove(badKeys);
-      console.log('🧹 [monthly] Cleared old cache keys:', badKeys.length);
-    }
-  } catch (error) {
-    console.warn('⚠️ [monthly] Failed to clear old cache keys:', error);
+  const cleaned = s
+    .replace(/\s*cusp\s*$/i, '')
+    .replace(/[–—−]/g, '-')
+    .replace(/_/g, '-')
+    .trim();
+
+  const lower = cleaned.toLowerCase();
+  const parts = lower.split('-').filter(Boolean);
+
+  if (parts.length === 2 && ZODIAC.has(parts[0]) && ZODIAC.has(parts[1])) {
+    return `${parts[0]}-${parts[1]}`;
   }
+
+  return lower;
 }
 
-// Build sign attempts for monthly forecasts
 function buildMonthlySignAttempts(input: string): string[] {
-  const trimmed = (input || '').trim();
+  const base = normaliseMonthlySign(input);
+  if (!base) return [];
 
-  if (trimmed.toLowerCase().includes('cusp')) {
-    const baseName = trimmed.replace(/\s*cusp\s*$/i, '').trim();
-    const parts = baseName.split(/[–-]/).map(p => p.trim()).filter(Boolean);
+  const parts = base.split('-').filter(Boolean);
 
-    if (parts.length >= 2) {
-      const sign1 = parts[0];
-      const sign2 = parts[1];
-
-      // Ensure mutable array type (avoid readonly inference)
-      return Array.from(
-        new Set(
-          [
-            // DB cusp format first (lowercase with hyphen)
-            `${sign1.toLowerCase()}-${sign2.toLowerCase()}`,
-            trimmed,
-            `${sign1}–${sign2}`,
-            `${sign1}-${sign2}`,
-            baseName,
-            // Try with "Cusp" suffix
-            `${baseName} Cusp`,
-            `${sign1}–${sign2} Cusp`,
-            `${sign1}-${sign2} Cusp`,
-            // Fallback to individual signs
-            sign1,
-            sign2,
-          ].filter(Boolean) as string[]
-        )
-      );
-    }
+  if (parts.length === 2) {
+    const [a, b] = parts;
+    return Array.from(new Set([
+      `${a}-${b}`,
+      `${a}-${b}-cusp`,
+      `${a}-${b} cusp`,
+      `${a}-${b}`,
+      a,
+      b,
+    ]));
   }
 
-  return Array.from(new Set([trimmed.toLowerCase(), trimmed].filter(Boolean) as string[]));
+  return [base];
 }
 
-export function decideMonthlyTargetSign(user: any): string {
-  if (!user?.cuspResult) return user?.preferred_sign || '';
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { getDefaultSignFromUserData } = require('./signs');
-  const resolvedSign = getDefaultSignFromUserData(user);
-  return resolvedSign;
+function getMonthlyCacheKey(sign: string, hemisphere: string, month: string) {
+  const hemi = hemisphere === 'Northern' ? 'NH' : 'SH';
+  return `monthly_${sign}__${hemi}__${month}`;
 }
 
-export function normalizeCuspLabelToDB(sign: string): string {
-  const noCuspWord = (sign || '').replace(/\s*cusp.*$/i, '').trim();
-  return noCuspWord.replace(/[–—−]/g, '-');
-}
+/* ----------------------------------------------------------------------------
+ * API
+ * -------------------------------------------------------------------------- */
+let requestId = 0;
 
-// ------------------------------------------------------------------------------------
-// Public API
-// ------------------------------------------------------------------------------------
 export async function getLatestForecast(
   rawSign: any,
   rawHemisphere: any,
   targetMonth?: Date
 ): Promise<{ ok: true; row: ForecastRow } | { ok: false; reason: string }> {
-  await clearOldMonthlyCacheKeys();
 
-  // Race protection
   const myRequestId = ++requestId;
 
-  const signNormalized = normalizeSignForDatabase(rawSign);
-  const hemiLabel = normalizeHemisphereLabel(rawHemisphere);
-  const hemiCode = hemiLabel === 'Northern' ? 'NH' : 'SH';
+  const sign = normaliseMonthlySign(rawSign);
+  if (!sign) return { ok: false, reason: 'empty_sign' };
 
-  if (!signNormalized) {
-    return { ok: false, reason: 'empty_sign' };
-  }
+  const hemisphere = normalizeHemisphereLabel(rawHemisphere);
+  const hemiCode = hemisphere === 'Northern' ? 'NH' : 'SH';
 
-  // Current month key "YYYY-MM-01"
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
-  const monthKey = targetMonth
-    ? targetMonth.toISOString().slice(0, 8) + '01'
-    : `${currentYear}-${currentMonth}-01`;
+  const now = targetMonth ?? new Date();
+  const monthKey = now.toISOString().slice(0, 8) + '01';
 
-  const cacheKey = getMonthlyForecastCacheKey(signNormalized, hemiLabel, monthKey);
+  const cacheKey = getMonthlyCacheKey(sign, hemisphere, monthKey);
 
-  // Cache first
   try {
     const cached = await storage.getItem(cacheKey);
     if (cached) {
-      const cachedRow = JSON.parse(cached);
-      return { ok: true, row: cachedRow as ForecastRow };
+      return { ok: true, row: JSON.parse(cached) };
     }
-  } catch {
-    /* ignore cache read errors */
-  }
+  } catch {}
 
-  const signAttempts: string[] = buildMonthlySignAttempts(signNormalized);
+  const attempts = buildMonthlySignAttempts(sign);
 
-  try {
-    for (const sign of signAttempts) {
-      if (myRequestId !== requestId) {
-        return { ok: false, reason: 'cancelled' };
-      }
-
-      const { data, error } = await supabase
-        .from('monthly_forecasts')
-        .select('sign, hemisphere, date, monthly_forecast')
-        .eq('sign', sign)
-        .eq('hemisphere', hemiCode)
-        .eq('date', monthKey)
-        .order('date', { ascending: false })
-        .limit(1);
-
-      if (error) {
-        continue;
-      }
-
-      if (data && data.length) {
-        const sorted = [...data].sort(
-          (a, b) => parseAsDate(b.date) - parseAsDate(a.date)
-        );
-        const best = sorted[0];
-
-        if (best?.monthly_forecast) {
-          try {
-            await storage.setItem(cacheKey, JSON.stringify(best));
-          } catch {
-            /* ignore cache write errors */
-          }
-          // Add alias for any legacy code expecting ".forecast"
-          (best as any).forecast = best.monthly_forecast;
-          return { ok: true, row: best as ForecastRow };
-        }
-      }
+  for (const attempt of attempts) {
+    if (myRequestId !== requestId) {
+      return { ok: false, reason: 'cancelled' };
     }
 
-    return { ok: false, reason: 'not_found' };
-  } catch (e: any) {
-    return { ok: false, reason: e?.message || 'exception' };
+    const { data, error } = await supabase
+      .from('monthly_forecasts')
+      .select('sign, hemisphere, date, monthly_forecast')
+      .eq('sign', attempt)
+      .eq('hemisphere', hemiCode)
+      .eq('date', monthKey)
+      .limit(1);
+
+    if (error || !data?.length) continue;
+
+    const row = data[0] as ForecastRow;
+    if (!row.monthly_forecast) continue;
+
+    row.forecast = row.monthly_forecast;
+
+    try {
+      await storage.setItem(cacheKey, JSON.stringify(row));
+    } catch {}
+
+    return { ok: true, row };
   }
+
+  return { ok: false, reason: 'not_found' };
 }
 
-/** Legacy wrapper */
+/* ----------------------------------------------------------------------------
+ * Legacy wrapper
+ * -------------------------------------------------------------------------- */
 export async function getForecast(
   signLabel: string,
   hemisphereLabel: 'Northern' | 'Southern'
@@ -302,35 +226,4 @@ export async function getForecast(
     forecast_month: res.row.date,
     forecast: res.row.monthly_forecast,
   };
-}
-
-export async function purgeUserCache(email: string) {
-  try {
-    const keys = await storage.getAllKeys();
-
-    const userDataKeys = keys.filter(k =>
-      k === '@astro_cusp_user_data' ||
-      k.startsWith(`userData:${email.toLowerCase()}`) ||
-      k.startsWith(`cosmicProfile:${email.toLowerCase()}`)
-    );
-
-    const badMonthlyKeys = keys.filter(k =>
-      k.startsWith('monthly_SH_') ||
-      k.startsWith('monthly_NH_') ||
-      (k.startsWith('monthly_') && !k.includes('__'))
-    );
-
-    const userMonthlyKeys = keys.filter(k =>
-      k.startsWith(`monthly:${email.toLowerCase()}:`)
-    );
-
-    const allKeysToRemove = [...userDataKeys, ...badMonthlyKeys, ...userMonthlyKeys];
-
-    if (allKeysToRemove.length > 0) {
-      await storage.multiRemove(allKeysToRemove);
-      console.log('🧹 [cache] Purged stale keys for', email, ':', allKeysToRemove.length);
-    }
-  } catch (error) {
-    console.error('❌ [cache] Error purging cache for', email, ':', error);
-  }
 }
