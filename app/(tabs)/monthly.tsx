@@ -61,25 +61,51 @@ function slugToDisplay(slug: string) {
   return slug;
 }
 
+const ZODIAC_ORDER = [
+  'aries', 'taurus', 'gemini', 'cancer', 'leo', 'virgo',
+  'libra', 'scorpio', 'sagittarius', 'capricorn', 'aquarius', 'pisces',
+];
+
+function zodiacIndex(signSlug: string): number {
+  const s = asString(signSlug).trim().toLowerCase();
+  const idx = ZODIAC_ORDER.indexOf(s);
+  return idx === -1 ? 999 : idx;
+}
+
 function isSingleZodiacSignSlug(slug: string): boolean {
   const s = asString(slug).trim().toLowerCase();
-  return [
-    'aries', 'taurus', 'gemini', 'cancer', 'leo', 'virgo',
-    'libra', 'scorpio', 'sagittarius', 'capricorn', 'aquarius', 'pisces',
-  ].includes(s);
+  return ZODIAC_ORDER.includes(s);
 }
 
 /**
- * ✅ FIXED CUSP RESOLUTION
+ * ✅ IMPORTANT FIX
+ * Always order cusp slugs to match DB storage.
+ * Example: if user data gives Taurus + Aries, DB still stores aries-taurus
+ */
+function buildOrderedCuspSlug(primaryRaw: string, secondaryRaw: string): string {
+  const a = toSlug(primaryRaw);
+  const b = toSlug(secondaryRaw);
+
+  if (!a || !b) return '';
+  if (!isSingleZodiacSignSlug(a) || !isSingleZodiacSignSlug(b)) return '';
+  if (a === b) return a;
+
+  const first = zodiacIndex(a) <= zodiacIndex(b) ? a : b;
+  const second = first === a ? b : a;
+
+  return `${first}-${second}`; // aries-taurus
+}
+
+/**
+ * ✅ FORCE CUSP RESOLUTION
  *
  * DB wants:
  *   "aries-taurus"
  *
  * DB does NOT want:
  *   "cusp-of-power"
- *   "Cusp of Power"
  *
- * So we ALWAYS derive the DB slug from primarySign + secondarySign.
+ * So we ALWAYS derive the DB slug from primarySign + secondarySign (ordered).
  * cuspName is only used for display, never for DB query.
  */
 function resolveForcedCusp(u: UserProfile | null): { slug: string; display: string } | null {
@@ -88,32 +114,32 @@ function resolveForcedCusp(u: UserProfile | null): { slug: string; display: stri
   const primaryRaw = asString(u.cuspResult?.primarySign).trim();
   const secondaryRaw = asString((u as any)?.cuspResult?.secondarySign).trim();
 
+  // 1) Proper cusp from primary + secondary (ordered to match DB)
+  const cuspSlug = buildOrderedCuspSlug(primaryRaw, secondaryRaw);
+  if (cuspSlug.includes('-')) {
+    return { slug: cuspSlug, display: slugToDisplay(cuspSlug) };
+  }
+
+  // 2) If only one sign, still valid DB key
   const primary = toSlug(primaryRaw);
   const secondary = toSlug(secondaryRaw);
 
-  // 1) Proper cusp from primary + secondary
-  if (primary && secondary && primary !== secondary) {
-    const slug = `${primary}-${secondary}`;
-    return { slug, display: slugToDisplay(slug) };
-  }
+  if (primary && isSingleZodiacSignSlug(primary)) return { slug: primary, display: slugToDisplay(primary) };
+  if (secondary && isSingleZodiacSignSlug(secondary)) return { slug: secondary, display: slugToDisplay(secondary) };
 
-  // 2) If we only have one sign, use it (still valid DB key)
-  if (primary) return { slug: primary, display: slugToDisplay(primary) };
-  if (secondary) return { slug: secondary, display: slugToDisplay(secondary) };
-
-  // 3) Last resort: try cuspName ONLY if it looks like a zodiac key
-  // (prevents "cusp-of-power" ever being used)
+  // 3) Last resort: try cuspName ONLY if it is literally "aries-taurus" style (not cusp-of-power)
   const cuspNameRaw = asString(u.cuspResult?.cuspName).trim();
-  const cuspSlug = toSlug(cuspNameRaw);
+  const cuspNameSlug = toSlug(cuspNameRaw);
 
-  // Allow only "aries-taurus" style (two sign parts) or a single zodiac sign
-  if (cuspSlug.includes('-')) {
-    const parts = cuspSlug.split('-').filter(Boolean);
+  if (cuspNameSlug.includes('-')) {
+    const parts = cuspNameSlug.split('-').filter(Boolean);
     if (parts.length === 2 && isSingleZodiacSignSlug(parts[0]) && isSingleZodiacSignSlug(parts[1])) {
-      return { slug: cuspSlug, display: slugToDisplay(cuspSlug) };
+      // Order it as well, just in case it came in reversed
+      const ordered = buildOrderedCuspSlug(parts[0], parts[1]);
+      return { slug: ordered || cuspNameSlug, display: slugToDisplay(ordered || cuspNameSlug) };
     }
-  } else if (isSingleZodiacSignSlug(cuspSlug)) {
-    return { slug: cuspSlug, display: slugToDisplay(cuspSlug) };
+  } else if (isSingleZodiacSignSlug(cuspNameSlug)) {
+    return { slug: cuspNameSlug, display: slugToDisplay(cuspNameSlug) };
   }
 
   return null;
@@ -163,12 +189,18 @@ export default function MonthlyForecastScreen() {
 
       if (!active) return;
 
-      // ✅ IMPORTANT: query using DB slug derived from primary+secondary only
-      console.log('[monthly] QUERY', { slug: cusp.slug, hemisphere });
+      console.log('[monthly] QUERY', {
+        slug: cusp.slug,
+        hemisphere,
+        primary: u?.cuspResult?.primarySign,
+        secondary: (u as any)?.cuspResult?.secondarySign,
+        cuspName: u?.cuspResult?.cuspName,
+      });
 
       const res = await getLatestForecast(cusp.slug, hemisphere);
 
       if (res.ok && res.row?.monthly_forecast) {
+        console.log('[monthly] HIT', { rowSign: res.row.sign, rowDate: res.row.date });
         setForecastText(res.row.monthly_forecast);
       } else {
         throw new Error(`No monthly forecast found for ${cusp.slug}`);
