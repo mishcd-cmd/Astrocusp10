@@ -1,4 +1,4 @@
-// app/(tabs)/monthly-forecast.tsx
+// app/(tabs)/monthly-forecast.tsx 
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
@@ -10,7 +10,6 @@ import {
   RefreshControl,
   TouchableOpacity,
   useWindowDimensions,
-  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -36,6 +35,113 @@ type Meta = {
   sign?: string;
 } | null;
 
+/* -------------------------
+ * Helpers
+ * ------------------------- */
+function asString(v: any): string {
+  return typeof v === 'string' ? v : v == null ? '' : String(v);
+}
+
+const ZODIAC = [
+  'aries', 'taurus', 'gemini', 'cancer', 'leo', 'virgo',
+  'libra', 'scorpio', 'sagittarius', 'capricorn', 'aquarius', 'pisces',
+];
+
+function isCuspLabel(labelRaw: string): boolean {
+  const s = asString(labelRaw).trim().toLowerCase();
+  if (!s) return false;
+
+  if (s.includes('cusp')) return true;
+
+  const cleaned = s.replace(/[\s]/g, '');
+  const hasSeparator = cleaned.includes('_') || cleaned.includes('-') || cleaned.includes('–');
+
+  if (!hasSeparator) return false;
+
+  let hits = 0;
+  for (const z of ZODIAC) {
+    if (s.includes(z)) hits += 1;
+  }
+  return hits >= 2;
+}
+
+function normaliseCuspLabelForLookup(labelRaw: string): string {
+  let s = asString(labelRaw).trim();
+  if (!s) return '';
+
+  // Convert underscore to dash
+  s = s.replace(/_/g, '-');
+
+  // Normalise dash variants to hyphen first (includes em dash too, just for input tolerance)
+  s = s.replace(/[—–]/g, '-');
+
+  // Remove trailing cusp word
+  s = s.replace(/\s*cusp\s*$/i, '').trim();
+
+  // Collapse spaces
+  s = s.replace(/\s+/g, ' ');
+
+  // Tighten spaces around separators
+  s = s.replace(/\s*-\s*/g, '-');
+
+  return s;
+}
+
+function buildMonthlySignAttempts(u: UserProfile): string[] {
+  const preferred = asString((u as any)?.preferred_sign).trim();
+  const cuspName = asString(u?.cuspResult?.cuspName).trim();
+  const primary = asString(u?.cuspResult?.primarySign).trim();
+  const secondary = asString((u as any)?.cuspResult?.secondarySign).trim();
+
+  const baseAttempts: string[] = [];
+
+  // Prefer preferred_sign if it looks cusp-like
+  if (preferred && isCuspLabel(preferred)) baseAttempts.push(preferred);
+
+  // Then cuspName if present
+  if (cuspName) baseAttempts.push(cuspName);
+
+  // Then pure signs
+  if (primary) baseAttempts.push(primary);
+  if (secondary) baseAttempts.push(secondary);
+
+  // Expand cusp variants for anything cusp-like
+  const expanded: string[] = [];
+  for (const a of baseAttempts) {
+    const raw = asString(a).trim();
+    if (!raw) continue;
+
+    expanded.push(raw);
+
+    if (isCuspLabel(raw)) {
+      const base = normaliseCuspLabelForLookup(raw);
+
+      // Try both hyphen and en dash versions, with and without " Cusp"
+      const hyphen = base;                 // Aries-Taurus
+      const enDash = base.replace(/-/g, '–'); // Aries–Taurus
+
+      expanded.push(hyphen);
+      expanded.push(`${hyphen} Cusp`);
+      expanded.push(enDash);
+      expanded.push(`${enDash} Cusp`);
+    }
+  }
+
+  // De-dupe while preserving order
+  return Array.from(new Set(expanded.filter(Boolean)));
+}
+
+function resolveHeaderSign(u: UserProfile | null): string | undefined {
+  if (!u) return undefined;
+  const preferred = asString((u as any)?.preferred_sign).trim();
+  if (preferred) return preferred;
+  return asString(u.cuspResult?.cuspName || u.cuspResult?.primarySign).trim() || undefined;
+}
+
+// Helper: is the forecast likely HTML?
+const isHtml = (s?: string | null) =>
+  !!s && /<\/?[a-z][\s\S]*>/i.test(s);
+
 export default function MonthlyForecastScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -48,11 +154,7 @@ export default function MonthlyForecastScreen() {
   const [meta, setMeta] = useState<Meta>(null);
   const [hasAccess, setHasAccess] = useState<boolean>(false);
 
-  // Resolve header values early
-  const resolvedSign = useMemo(() => {
-    if (!user) return undefined;
-    return user.cuspResult?.cuspName || user.cuspResult?.primarySign;
-  }, [user]);
+  const resolvedSign = useMemo(() => resolveHeaderSign(user), [user]);
 
   const resolvedHemisphere = useMemo(() => {
     if (!user) return undefined;
@@ -75,31 +177,28 @@ export default function MonthlyForecastScreen() {
 
       // 2) Subscription gate
       const subscriptionStatus = await getSubscriptionStatus();
-      setHasAccess(!!subscriptionStatus?.active);
+      const active = !!subscriptionStatus?.active;
+      setHasAccess(active);
 
-      if (!subscriptionStatus?.active) {
-        // Show a nice header with their sign/month but gate content
-        setMeta({
-          sign: u.cuspResult?.cuspName || u.cuspResult?.primarySign || 'Your Sign',
-          hemisphere: u.hemisphere,
-          // Just show "this month" as a label if you don’t have a specific date
-          date: new Date().toISOString().slice(0, 10),
-        });
-        return;
-      }
-
-      // 3) Fetch forecast — try cusp → primary → secondary
-      const cuspName = u.cuspResult?.cuspName || undefined;
-      const primary = u.cuspResult?.primarySign || undefined;
-      const secondary = u.cuspResult?.secondarySign || undefined;
-      const hemisphere = u.hemisphere || undefined;
-
+      const hemisphere = asString(u.hemisphere).trim() || undefined;
       if (!hemisphere) {
         setError('Missing hemisphere in your profile. Please update your location settings.');
         return;
       }
 
-      const attempts = Array.from(new Set([cuspName, primary, secondary].filter(Boolean))) as string[];
+      // Always set meta header early so UI reflects the profile even if gated
+      setMeta({
+        sign: resolveHeaderSign(u) || 'Your Sign',
+        hemisphere,
+        date: new Date().toISOString().slice(0, 10),
+      });
+
+      if (!active) {
+        return;
+      }
+
+      // 3) Fetch forecast - cusp aware attempts with variants
+      const attempts = buildMonthlySignAttempts(u);
       if (attempts.length === 0) {
         setError('Missing astrological sign in your profile. Please complete your profile setup.');
         return;
@@ -109,6 +208,9 @@ export default function MonthlyForecastScreen() {
 
       for (const signAttempt of attempts) {
         try {
+          // Debugging - keep this while you verify
+          console.log('[monthly] trying forecast', { signAttempt, hemisphere });
+
           const res = await getLatestForecast(signAttempt, hemisphere);
           if (res.ok && res.row?.monthly_forecast) {
             found = {
@@ -116,12 +218,13 @@ export default function MonthlyForecastScreen() {
               m: {
                 date: res.row.date,
                 hemisphere: res.row.hemisphere,
-                sign: res.row.sign || signAttempt,
+                // Prefer the attempt we used (avoids showing "Taurus" if DB row.sign is weird)
+                sign: signAttempt,
               },
             };
             break;
           }
-        } catch {
+        } catch (e) {
           // try next attempt
         }
       }
@@ -156,10 +259,10 @@ export default function MonthlyForecastScreen() {
   }, [loadAll]);
 
   const goBack = useCallback(() => {
-    if (router.canGoBack()) {
+    if ((router as any).canGoBack?.()) {
       router.back();
     } else {
-      router.replace('/(tabs)/astrology'); // sane default
+      router.replace('/(tabs)/astrology');
     }
   }, [router]);
 
@@ -172,7 +275,7 @@ export default function MonthlyForecastScreen() {
     router.push('/subscription');
   };
 
-  // ---- HTML rendering setup (Vazirmatn everywhere) ----
+  // HTML rendering setup (Vazirmatn everywhere)
   const systemFonts = [
     'Vazirmatn-Regular',
     'Vazirmatn-Medium',
@@ -201,11 +304,6 @@ export default function MonthlyForecastScreen() {
     ol: { paddingLeft: 18 },
   } as const;
 
-  // Helper: is the forecast likely HTML?
-  const isHtml = (s?: string | null) =>
-    !!s && /<\/?[a-z][\s\S]*>/i.test(s);
-
-  // ----- RENDER -----
   if (loading) {
     return (
       <View style={styles.container}>
@@ -261,13 +359,13 @@ export default function MonthlyForecastScreen() {
               <View style={styles.headerItem}>
                 <Text style={styles.headerSmallLabel}>Sign</Text>
                 <Text style={styles.headerSmallValue}>
-                  {meta?.sign || resolvedSign || '—'}
+                  {meta?.sign || resolvedSign || 'N/A'}
                 </Text>
               </View>
               <View style={styles.headerItem}>
                 <Text style={styles.headerSmallLabel}>Hemisphere</Text>
                 <Text style={styles.headerSmallValue}>
-                  {meta?.hemisphere || resolvedHemisphere || '—'}
+                  {meta?.hemisphere || resolvedHemisphere || 'N/A'}
                 </Text>
               </View>
               <View style={styles.headerItem}>
