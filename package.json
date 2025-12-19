@@ -48,6 +48,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",
+    "@expo/config-plugins": "^54.0.4",
     "@expo/webpack-config": "~19.0.1",
     "@types/node": "^20.12.7",
     "@types/react": "~18.2.79",
