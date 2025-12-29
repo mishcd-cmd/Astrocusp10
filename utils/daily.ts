@@ -27,6 +27,7 @@ function squashSpaces(s: string) {
 }
 
 function normalizeDashes(s: string) {
+  // normalise various dash chars and underscores to a plain hyphen
   return (s || '').replace(/[_\u2012\u2013\u2014\u2015]/g, '-');
 }
 
@@ -55,8 +56,7 @@ function slugToDisplay(slug: string): string {
 }
 
 /* =========================================================
-   CUSP NAME MAP (marketing names → DB slug)
-   Only used if your profile passes marketing names
+   CUSP NAME MAP (marketing names -> DB slug)
 ========================================================= */
 const CUSP_NAME_TO_DB_SLUG: Record<string, string> = {
   'cusp of power': 'aries-taurus',
@@ -113,7 +113,7 @@ function resolveDbSignFromUser(user: any): { dbSign: string; display: string; at
     return {
       dbSign: cusp,
       display: slugToDisplay(cusp),
-      attempts: [cusp, primary, secondary],
+      attempts: [cusp, primary, secondary].filter(Boolean),
     };
   }
 
@@ -135,6 +135,58 @@ function resolveDbSignFromUser(user: any): { dbSign: string; display: string; at
     dbSign: single,
     display: slugToDisplay(single),
     attempts: single ? [single] : [],
+  };
+}
+
+/* =========================================================
+   DB ROW NORMALISATION (THIS IS THE IMPORTANT FIX)
+   Your table has sign columns and content columns split:
+   - sign might be empty while segment has the real sign
+   - daily_horoscope might be empty while daily has the content
+========================================================= */
+function normaliseDailyRow(r: any): DailyRow {
+  // Some rows use sign, some use segment (your screenshot showed both)
+  const resolvedSign =
+    r?.segment ??
+    r?.sign ??
+    r?.sign_name ??
+    r?.slug ??
+    '';
+
+  // Content fields can be in multiple columns depending on ingestion
+  const resolvedDaily =
+    r?.daily_horoscope ??
+    r?.daily ??
+    r?.horoscope ??
+    r?.segment_daily ??
+    r?.segment_horoscope ??
+    '';
+
+  const resolvedAffirmation =
+    r?.affirmation ??
+    r?.daily_affirmation ??
+    r?.segment_affirmation ??
+    '';
+
+  const resolvedDeeper =
+    r?.deeper_insight ??
+    r?.deeper ??
+    r?.segment_deeper ??
+    r?.insight ??
+    '';
+
+  return {
+    // IMPORTANT: use resolvedSign so matching works even if r.sign is blank
+    sign: resolvedSign,
+    hemisphere: r?.hemisphere,
+    date: r?.date,
+
+    daily_horoscope: resolvedDaily || '',
+    affirmation: resolvedAffirmation || '',
+    deeper_insight: resolvedDeeper || '',
+
+    __source_table__: 'horoscope_cache',
+    ...r,
   };
 }
 
@@ -162,21 +214,13 @@ async function fetchRowsForDate(
         date,
         hemi: q.hemi,
         count: data?.length ?? 0,
-        sample: data?.slice(0, 8)?.map(r => r.sign),
+        sample_sign: data?.slice(0, 8)?.map(r => r.sign),
+        sample_segment: data?.slice(0, 8)?.map(r => (r as any).segment),
       });
     }
 
     if (!error && data && data.length) {
-      return data.map((r: any) => ({
-        sign: r.sign,
-        hemisphere: r.hemisphere,
-        date: r.date,
-        daily_horoscope: r.daily_horoscope ?? r.daily ?? r.horoscope ?? '',
-        affirmation: r.affirmation ?? r.daily_affirmation ?? '',
-        deeper_insight: r.deeper_insight ?? r.deeper ?? '',
-        __source_table__: 'horoscope_cache',
-        ...r,
-      }));
+      return data.map(normaliseDailyRow);
     }
   }
 
@@ -221,7 +265,7 @@ export async function getDailyForecast(
     const rows = await fetchRowsForDate(date, hemiLong, hemiShort, debug);
     if (!rows.length) continue;
 
-    // 1) Exact match first (this prevents Taurus stealing Aries-Taurus)
+    // 1) Exact match first (prevents Taurus stealing Aries-Taurus)
     for (const attempt of inputAttempts) {
       const matchExact = rows.find(r => toDbSlug(r.sign) === attempt);
       if (matchExact) return matchExact;
