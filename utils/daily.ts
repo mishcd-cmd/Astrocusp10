@@ -11,10 +11,9 @@ export type HemiAny = HemiShort | HemiLong;
 
 export type DailyRow = {
   sign: string;
-  hemisphere: any; // DB can be 'Southern'/'Northern' OR 'SH'/'NH'
+  hemisphere: any;
   date: string;
 
-  // Possible column names in DB (you said you have both sets)
   daily_horoscope?: string;
   affirmation?: string;
   deeper_insight?: string;
@@ -46,11 +45,6 @@ function toTitleCaseWord(w: string) {
   return w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : '';
 }
 
-/** Convert any label into a DB-safe slug.
-    "Aries–Taurus Cusp" -> "aries-taurus"
-    "Aries-Taurus" -> "aries-taurus"
-    "cusp of power" -> "cusp-of-power" (we will NOT use this for DB unless mapped)
-*/
 function toDbSlug(input: string): string {
   const s = stripTrailingCusp(normalizeDashes(squashSpaces(input))).toLowerCase();
   return s
@@ -76,7 +70,7 @@ function isSingleZodiacSignSlug(slug: string): boolean {
 }
 
 /* =========================================================
-   MARKETING CUSP NAME MAP (ONLY if your profile uses these)
+   MARKETING CUSP MAP (ONLY if your profile uses these)
 ========================================================= */
 const CUSP_NAME_TO_DB_SLUG: Record<string, string> = {
   'cusp of power': 'aries-taurus',
@@ -93,13 +87,41 @@ const CUSP_NAME_TO_DB_SLUG: Record<string, string> = {
 };
 
 /* =========================================================
-   HEMISPHERE
+   HEMISPHERE NORMALISATION (tolerant)
 ========================================================= */
-function hemiToBothDbForms(hemi?: HemiAny): { long: HemiLong; short: HemiShort } {
-  const v = (hemi || 'Southern').toString().toLowerCase();
-  const long: HemiLong = v === 'northern' || v === 'nh' ? 'Northern' : 'Southern';
-  const short: HemiShort = long === 'Northern' ? 'NH' : 'SH';
-  return { long, short };
+function hemiToCanonicalLong(hemi?: any): HemiLong {
+  const v = squashSpaces(String(hemi ?? '')).toLowerCase();
+  if (!v) return 'Southern';
+  if (v === 'nh' || v.includes('north')) return 'Northern';
+  return 'Southern';
+}
+
+function hemiToCanonicalShort(long: HemiLong): HemiShort {
+  return long === 'Northern' ? 'NH' : 'SH';
+}
+
+function hemiMatchesRow(rowHemi: any, wantLong: HemiLong): boolean {
+  const row = squashSpaces(String(rowHemi ?? '')).toLowerCase();
+  const want = wantLong.toLowerCase();
+  const wantShort = hemiToCanonicalShort(wantLong).toLowerCase();
+
+  // Accept lots of messy variants
+  if (!row) return false;
+  if (row === want) return true;
+  if (row === wantShort) return true;
+
+  if (wantLong === 'Southern') {
+    if (row.includes('south')) return true;
+    if (row.includes('sh')) return true;
+  } else {
+    if (row.includes('north')) return true;
+    if (row.includes('nh')) return true;
+  }
+
+  // also accept strings like "Southern Hemisphere"
+  if (row.includes(want)) return true;
+
+  return false;
 }
 
 /* =========================================================
@@ -113,12 +135,6 @@ function ymdUTC(d = new Date()) {
   return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
 }
 
-function ymdLocal(d = new Date()) {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-
-// Use Sydney time on web to match how you are publishing content.
-// On native, local time is already the user's calendar day.
 function ymdSydney(d = new Date()) {
   try {
     const parts = new Intl.DateTimeFormat('en-AU', {
@@ -134,7 +150,8 @@ function ymdSydney(d = new Date()) {
     const day = get('day');
     if (y && m && day) return `${y}-${m}-${day}`;
   } catch {}
-  return ymdLocal(d);
+  // fallback to local if Intl timezone fails
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
 function buildDailyAnchors(d = new Date()) {
@@ -155,12 +172,9 @@ function buildDailyAnchors(d = new Date()) {
 }
 
 /* =========================================================
-   SIGN RESOLUTION (FORCE CUSP DB SLUG)
-   DB rows use:
-     sign = "aries-taurus"  (for cusp)
-     sign = "taurus"        (for normal sign)
+   SIGN RESOLUTION (force cusp for DB)
 ========================================================= */
-function resolveDbSignFromUser(user: any): { dbSign: string; display: string; attempts: string[] } {
+function resolveDbSignFromUser(user: any): { dbSign: string; display: string } {
   const primary = toDbSlug(user?.cuspResult?.primarySign || '');
   const secondary = toDbSlug(
     user?.cuspResult?.secondarySign ||
@@ -168,49 +182,29 @@ function resolveDbSignFromUser(user: any): { dbSign: string; display: string; at
     ''
   );
 
-  // 1) Force cusp from primary + secondary whenever possible
+  // 1) Always prefer cusp slug if we have both
   if (primary && secondary && primary !== secondary) {
     const cusp = `${primary}-${secondary}`;
-    return {
-      dbSign: cusp,
-      display: slugToDisplay(cusp),
-      attempts: [cusp], // IMPORTANT: do not fall back to single signs first
-    };
+    return { dbSign: cusp, display: slugToDisplay(cusp) };
   }
 
-  // 2) Marketing name mapping (only if needed)
+  // 2) Marketing name mapping
   const cuspNameKey = squashSpaces(user?.cuspResult?.cuspName || '').toLowerCase();
   if (cuspNameKey && CUSP_NAME_TO_DB_SLUG[cuspNameKey]) {
     const cusp = CUSP_NAME_TO_DB_SLUG[cuspNameKey];
-    return { dbSign: cusp, display: slugToDisplay(cusp), attempts: [cusp] };
+    return { dbSign: cusp, display: slugToDisplay(cusp) };
   }
 
-  // 3) Last resort: if cuspName itself is a usable zodiac slug
-  const cuspSlug = toDbSlug(user?.cuspResult?.cuspName || '');
-  if (cuspSlug.includes('-')) {
-    const parts = cuspSlug.split('-').filter(Boolean);
-    if (parts.length === 2 && isSingleZodiacSignSlug(parts[0]) && isSingleZodiacSignSlug(parts[1])) {
-      return { dbSign: cuspSlug, display: slugToDisplay(cuspSlug), attempts: [cuspSlug] };
-    }
-  }
-
-  // 4) Fall back to preferred or primary single sign
+  // 3) Fallback to single sign
   const preferred = toDbSlug(user?.preferred_sign || '');
   const single = primary || preferred || secondary || '';
-  return {
-    dbSign: single,
-    display: slugToDisplay(single),
-    attempts: single ? [single] : [],
-  };
+  return { dbSign: single, display: slugToDisplay(single) };
 }
 
 /* =========================================================
-   DB FETCH
+   FIELD EXTRACTION (handles your "starts again with segment/daily/deeper")
 ========================================================= */
 function extractDailyFields(r: any) {
-  // You said your table has both:
-  // daily_horoscope / affirmation / deeper_insight
-  // and also segment / daily / deeper
   const daily =
     r.daily_horoscope ??
     r.daily ??
@@ -231,48 +225,58 @@ function extractDailyFields(r: any) {
   return { daily, affirmation, deeper };
 }
 
+/* =========================================================
+   DB FETCH (date only, tolerant hemisphere in JS)
+========================================================= */
 async function fetchRowsForDate(
   date: string,
-  hemisphereLong: HemiLong,
-  hemisphereShort: HemiShort,
+  wantLong: HemiLong,
   debug?: boolean
 ): Promise<DailyRow[]> {
-  const hemiAttempts = [hemisphereLong, hemisphereShort];
+  const { data, error } = await supabase
+    .from('horoscope_cache')
+    .select('*')
+    .eq('date', date);
 
-  for (const hemi of hemiAttempts) {
-    const { data, error } = await supabase
-      .from('horoscope_cache')
-      .select('*')
-      .eq('hemisphere', hemi)
-      .eq('date', date);
+  const count = data?.length ?? 0;
 
-    if (debug) {
-      console.log('[daily] DB rows', {
-        date,
-        hemi,
-        count: data?.length ?? 0,
-        sample: data?.slice(0, 10)?.map((x: any) => x.sign),
-      });
-    }
-
-    if (!error && data && data.length) {
-      return data.map((r: any) => {
-        const { daily, affirmation, deeper } = extractDailyFields(r);
-        return {
-          sign: r.sign,
-          hemisphere: r.hemisphere,
-          date: r.date,
-          daily_horoscope: daily,
-          affirmation,
-          deeper_insight: deeper,
-          __source_table__: 'horoscope_cache',
-          ...r,
-        };
-      });
-    }
+  if (debug) {
+    console.log('[daily] DB rows (date only)', {
+      date,
+      wantLong,
+      count,
+      sampleSigns: (data || []).slice(0, 12).map((x: any) => x.sign),
+      sampleHemis: (data || []).slice(0, 12).map((x: any) => x.hemisphere),
+    });
   }
 
-  return [];
+  if (error || !data || !data.length) return [];
+
+  // Filter hemisphere locally (tolerant)
+  const filtered = data.filter((r: any) => hemiMatchesRow(r.hemisphere, wantLong));
+
+  if (debug) {
+    console.log('[daily] rows after hemi filter', {
+      date,
+      wantLong,
+      kept: filtered.length,
+      keptSample: filtered.slice(0, 12).map((x: any) => ({ sign: x.sign, hemi: x.hemisphere })),
+    });
+  }
+
+  return filtered.map((r: any) => {
+    const { daily, affirmation, deeper } = extractDailyFields(r);
+    return {
+      sign: r.sign,
+      hemisphere: r.hemisphere,
+      date: r.date,
+      daily_horoscope: daily,
+      affirmation,
+      deeper_insight: deeper,
+      __source_table__: 'horoscope_cache',
+      ...r,
+    };
+  });
 }
 
 /* =========================================================
@@ -282,23 +286,23 @@ export async function getDailyForecast(
   signIn: string,
   hemisphereIn: HemiAny,
   opts?: {
-    userId?: string;
     forceDate?: string;
     debug?: boolean;
   }
 ): Promise<DailyRow | null> {
   const debug = !!opts?.debug;
-  const { long: hemiLong, short: hemiShort } = hemiToBothDbForms(hemisphereIn);
 
+  const wantLong = hemiToCanonicalLong(hemisphereIn);
   const inputSlug = toDbSlug(signIn);
+
   const anchors = opts?.forceDate ? [opts.forceDate] : buildDailyAnchors();
 
   if (debug) {
     console.log('[daily] resolve', {
       input: signIn,
       inputSlug,
-      hemiLong,
-      hemiShort,
+      wantLong,
+      wantShort: hemiToCanonicalShort(wantLong),
       anchors,
     });
   }
@@ -306,35 +310,36 @@ export async function getDailyForecast(
   if (!inputSlug) return null;
 
   for (const date of anchors) {
-    const rows = await fetchRowsForDate(date, hemiLong, hemiShort, debug);
+    const rows = await fetchRowsForDate(date, wantLong, debug);
     if (!rows.length) continue;
 
-    // 1) Exact match on slug, using BOTH r.sign and r.segment
+    // 1) Exact match on slug using r.sign OR r.segment
     const exact = rows.find(r => {
-      const rowKey = toDbSlug(r.sign || '');
+      const signKey = toDbSlug(r.sign || '');
       const segKey = toDbSlug((r as any).segment || '');
-      return rowKey === inputSlug || segKey === inputSlug;
+      return signKey === inputSlug || segKey === inputSlug;
     });
+
     if (exact) return exact;
 
-    // 2) As an absolute last resort, allow "includes" but only if it cannot cause Taurus stealing Aries-Taurus
-    // (we only allow includes when the input is a single sign)
+    // 2) Only allow loose match if the input is a single sign
+    // This prevents Taurus stealing Aries-Taurus.
     if (isSingleZodiacSignSlug(inputSlug)) {
       const loose = rows.find(r => {
-        const rowKey = toDbSlug(r.sign || '');
+        const signKey = toDbSlug(r.sign || '');
         const segKey = toDbSlug((r as any).segment || '');
-        return rowKey.includes(inputSlug) || segKey.includes(inputSlug);
+        return signKey.includes(inputSlug) || segKey.includes(inputSlug);
       });
       if (loose) return loose;
     }
   }
 
-  if (debug) console.warn('[daily] not found', { signIn, inputSlug, hemiLong, hemiShort });
+  if (debug) console.warn('[daily] not found', { signIn, inputSlug, wantLong });
   return null;
 }
 
 /* =========================================================
-   SCREEN WRAPPER (FORCE CUSP FROM PROFILE)
+   SCREEN WRAPPER (force cusp from user profile)
 ========================================================= */
 export async function getAccessibleHoroscope(
   user: any,
@@ -343,9 +348,9 @@ export async function getAccessibleHoroscope(
     debug?: boolean;
   }
 ) {
-  const hemisphere: HemiAny = user?.hemisphere || 'Southern';
   const debug = !!opts?.debug;
 
+  const hemisphere: HemiAny = user?.hemisphere || 'Southern';
   const resolved = resolveDbSignFromUser(user);
 
   if (debug) {
@@ -362,19 +367,17 @@ export async function getAccessibleHoroscope(
   if (!resolved.dbSign) return null;
 
   const row = await getDailyForecast(resolved.dbSign, hemisphere, {
-    userId: user?.id || user?.email,
     forceDate: opts?.forceDate,
     debug,
   });
 
   if (!row) return null;
 
-  // Ensure we return content from whichever column set is populated
   const { daily, affirmation, deeper } = extractDailyFields(row);
 
   return {
     date: row.date,
-    sign: resolved.display, // nice display label
+    sign: resolved.display,
     hemisphere: row.hemisphere,
     daily: daily || '',
     affirmation: affirmation || '',
