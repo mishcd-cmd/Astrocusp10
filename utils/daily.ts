@@ -103,19 +103,24 @@ function hemiToBothDbForms(hemi?: HemiAny): { long: 'Northern' | 'Southern'; sho
 
 /* =========================================================
    DATE HELPERS
+   FIX: Use LOCAL calendar date, NOT UTC.
+   This prevents midnight UTC from "missing" today's row in AU/NZ.
 ========================================================= */
 function pad2(n: number) {
   return `${n}`.padStart(2, '0');
 }
 
-function anchorUTC(d = new Date()) {
-  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+function anchorLocal(d = new Date()) {
+  // Create a local-midnight date to avoid timezone drift
+  const local = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  return `${local.getFullYear()}-${pad2(local.getMonth() + 1)}-${pad2(local.getDate())}`;
 }
 
 function buildDailyAnchors(d = new Date()) {
-  const today = anchorUTC(d);
-  const yesterday = anchorUTC(new Date(d.getTime() - 86400000));
-  const tomorrow = anchorUTC(new Date(d.getTime() + 86400000));
+  // Use local calendar anchors, and keep a small fallback window
+  const today = anchorLocal(d);
+  const yesterday = anchorLocal(new Date(d.getTime() - 86400000));
+  const tomorrow = anchorLocal(new Date(d.getTime() + 86400000));
   return [today, yesterday, tomorrow];
 }
 
@@ -176,6 +181,7 @@ async function fetchRowsForDate(
           segment: r.segment,
           hasDailyHoroscope: !!(r.daily_horoscope && String(r.daily_horoscope).trim()),
           hasDaily: !!(r.daily && String(r.daily).trim()),
+          hasAffirmation: !!(r.affirmation && String(r.affirmation).trim()),
           hasDeeperInsight: !!(r.deeper_insight && String(r.deeper_insight).trim()),
           hasDeeper: !!(r.deeper && String(r.deeper).trim()),
         })),
@@ -186,22 +192,24 @@ async function fetchRowsForDate(
 
     // Map BOTH schema variants into the unified fields
     return data.map((r: any) => {
-      const keyLabel = firstNonEmpty(r.segment, r.sign);
-
       return {
-        // Keep the original columns too
+        // Keep all original columns too
         ...r,
 
+        // Identity
         sign: firstNonEmpty(r.sign, r.segment),
         segment: r.segment,
-
         hemisphere: r.hemisphere,
         date: r.date,
 
-        // Prefer new fields, fall back to legacy fields when empty
+        // Content: prefer explicit columns, then legacy columns
         daily_horoscope: firstNonEmpty(r.daily_horoscope, r.daily, r.horoscope),
         affirmation: firstNonEmpty(r.affirmation, r.daily_affirmation),
         deeper_insight: firstNonEmpty(r.deeper_insight, r.deeper),
+
+        // legacy passthrough (optional)
+        daily: r.daily,
+        deeper: r.deeper,
 
         __source_table__: 'horoscope_cache',
       } as DailyRow;
@@ -304,7 +312,7 @@ export async function getAccessibleHoroscope(
 
   return {
     date: row.date,
-    sign: resolved.display,               // display label for UI
+    sign: resolved.display, // display label for UI
     hemisphere: row.hemisphere,
 
     // IMPORTANT: content pulled from merged fields
