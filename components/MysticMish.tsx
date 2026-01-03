@@ -31,10 +31,94 @@ interface MysticMishProps {
   hemisphere: 'Northern' | 'Southern';
 }
 
-export default function MysticMish({
-  onRitualReveal,
-  hemisphere,
-}: MysticMishProps) {
+function pad2(n: number) {
+  return `${n}`.padStart(2, '0');
+}
+
+function ymdUTC(d = new Date()) {
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+}
+
+function withinDaysUTC(targetYmd: string, daysEitherSide = 1) {
+  const now = new Date();
+  const [y, m, d] = targetYmd.split('-').map(Number);
+  const target = Date.UTC(y, (m || 1) - 1, d || 1);
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const diffDays = Math.round((today - target) / 86400000);
+  return Math.abs(diffDays) <= daysEitherSide;
+}
+
+function buildWolfMoonSpell(hemisphere: 'Northern' | 'Southern') {
+  if (hemisphere === 'Southern') {
+    return {
+      title: '🌕 Wolf Moon Fire Release',
+      subtitle: 'Full Moon in Cancer - Southern Hemisphere',
+      teaser:
+        'A blazing summer spell for emotional sovereignty, ancestral clearing, and fierce self-protection.',
+      full: `🌕 Mystic Mish Spell: January 3rd Full Moon
+🔥 Wolf Moon Fire Release
+Full Moon in Cancer - Southern Hemisphere
+A blazing summer spell for emotional sovereignty, ancestral clearing, and fierce self-protection.
+
+Seasonal Context
+The first Full Moon of 2026 arrives in Southern summer heat, burning bright in watery Cancer while the Sun stands opposite in Capricorn's mountain air. This Wolf Supermoon sits closer to Earth than usual, magnifying everything it touches. In the South, summer amplifies the fire element, making this a potent moment to burn away what no longer serves your emotional body and claim your territory with absolute clarity.
+Moon Phase: Full Moon in Cancer (Wolf Supermoon)
+Element: Fire (transformational release)
+
+The Ritual
+Full Moon in Cancer - Southern Hemisphere
+Theme: emotional sovereignty, ancestral clearing, fierce boundaries
+Items: red or orange candle, fireproof bowl, bay leaves (3 to 5), pen, small glass of spring water, salt
+Colours: scarlet, burnt orange, silver white, deep ocean blue
+
+Steps
+1) Stand outside if possible, barefoot on warm earth. Feel the summer night against your skin. Say aloud: "I am the wolf. I know my territory. I protect what matters."
+2) Light your candle and place it safely in front of you. On each bay leaf, write one thing you refuse to carry into the rest of this year: a guilt pattern, an inherited wound, a relationship dynamic that drains you, a fear that keeps you small.
+3) Hold each bay leaf to your heart before burning it in the flame. As it catches, say: "This ends with me. The cycle breaks here." Drop each burning leaf into your fireproof bowl and watch the smoke rise.
+4) When all leaves are ash, add a pinch of salt to the water and drink half. Pour the rest over the ashes, speaking your own name three times with absolute authority.
+5) Take the bowl outside and scatter the wet ashes onto the earth or into moving water. Walk away without looking back. The Wolf Moon honours those who release without nostalgia.
+6) Before sleep, place your hands on your belly and ribs. Breathe into the space you have just reclaimed. This is your emotional territory now. Guard it.
+
+Note
+This Supermoon magnifies all emotional material. If feelings surge in the days following this ritual, let them. The wolf does not apologise for howling at what it sees clearly in the moonlight.`,
+    };
+  }
+
+  return {
+    title: '🌕 Wolf Moon Water Reclamation',
+    subtitle: 'Full Moon in Cancer - Northern Hemisphere',
+    teaser:
+      'A midwinter spell for emotional truth, ancestral healing, and quiet sovereignty beneath the snow.',
+    full: `🌕 Mystic Mish Spell: January 3rd Full Moon
+❄️ Wolf Moon Water Reclamation
+Full Moon in Cancer - Northern Hemisphere
+A midwinter spell for emotional truth, ancestral healing, and quiet sovereignty beneath the snow.
+
+Seasonal Context
+In the Northern winter, the Wolf Supermoon rises over frozen ground, illuminating everything that lives beneath the surface. Cancer's waters meet Capricorn's stone in the deep cold, asking you to look honestly at what you have been holding in the name of care, duty, or inherited obligation. This Moon is closer to Earth than most, pulling at your interior tides with unusual strength. The wolf howls not from aggression but from clarity about what belongs in the den and what must stay outside.
+Moon Phase: Full Moon in Cancer (Wolf Supermoon)
+Element: Water (emotional revelation)
+
+The Ritual
+Full Moon in Cancer - Northern Hemisphere
+Theme: emotional truth, ancestral healing, boundary setting
+Items: white or silver candle, bowl of clean water (snow or ice melted if possible), smooth stone, paper, pen, small sprig of evergreen
+Colours: pearl white, ice blue, dark forest green, winter grey
+
+Steps
+1) Sit somewhere quiet with your candle lit. Hold the stone in your left hand and feel its weight. Say softly: "I am permitted to know what I feel without apology."
+2) On your paper, write three truths you have been avoiding about your emotional patterns or family inheritance. Be ruthlessly honest. Cancer under a Supermoon will not accept performance.
+3) Read each truth aloud, then dip the evergreen sprig into the water and touch it to your forehead, throat, and heart. Say: "I see this. I speak this. I feel this. And I choose differently."
+4) Fold the paper small and place it under the bowl of water. Let the candle burn while you sit in silence, watching the flame's reflection in the water. This is you observing your own emotional world without drowning in it.
+5) After at least ten minutes, take the paper outside and bury it in frozen earth or snow. The winter will compost what you have released. Keep the stone as a reminder of your sovereignty.
+6) Return inside and drink a full glass of water slowly, feeling it travel through your body. You are clearing the channel. The Wolf Moon teaches that protection begins with knowing exactly what you are protecting.
+
+Note
+This Supermoon magnifies all emotional material. If feelings surge in the days following this ritual, let them. The wolf does not apologise for howling at what it sees clearly in the moonlight.`,
+  };
+}
+
+export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [currentRitual, setCurrentRitual] = useState<string>('');
   const [isAnimating, setIsAnimating] = useState(false);
@@ -51,31 +135,6 @@ export default function MysticMish({
   const sparkleAnimation = useRef(new Animated.Value(0)).current;
   const scaleAnimation = useRef(new Animated.Value(1)).current;
   const wiggleAnimation = useRef(new Animated.Value(0)).current;
-
-  const checkRitualTime = async () => {
-    const currentMoon = getCurrentMoonPhase();
-    setMoonPhase(currentMoon);
-
-    try {
-      const positions =
-        typeof getCurrentPlanetaryPositionsEnhanced === 'function'
-          ? await getCurrentPlanetaryPositionsEnhanced(hemisphere as any)
-          : [];
-      setPlanetaryPositions(Array.isArray(positions) ? positions : []);
-    } catch {
-      setPlanetaryPositions([]);
-    }
-
-    // Exact requested popup message
-    const message =
-      'Ending the year with New Moon energy! See Mystic Mish tab to tap into it';
-
-    if (isMounted.current) {
-      setCurrentRitual(message);
-      setIsVisible(true);
-      startAnimations();
-    }
-  };
 
   const startAnimations = () => {
     // Keep iOS light for performance
@@ -126,6 +185,33 @@ export default function MysticMish({
         }),
       ])
     ).start();
+  };
+
+  const buildPopupMessage = (phase: any) => {
+    return 'The wolf howls its emotions to the moon, click the Mystic Mish tab to find out how you can let it go';
+  };
+
+  const checkRitualTime = async () => {
+    const currentMoon = getCurrentMoonPhase();
+    setMoonPhase(currentMoon);
+
+    try {
+      const positions =
+        typeof getCurrentPlanetaryPositionsEnhanced === 'function'
+          ? await getCurrentPlanetaryPositionsEnhanced(hemisphere as any)
+          : [];
+      setPlanetaryPositions(Array.isArray(positions) ? positions : []);
+    } catch {
+      setPlanetaryPositions([]);
+    }
+
+    const message = buildPopupMessage(currentMoon);
+
+    if (isMounted.current) {
+      setCurrentRitual(message);
+      setIsVisible(true);
+      startAnimations();
+    }
   };
 
   const handleMishTap = () => {
@@ -256,9 +342,7 @@ export default function MysticMish({
       )}
 
       {/* Mystic Mish character */}
-      <Animated.View
-        style={[styles.mishContainer, { transform: getTransforms() }]}
-      >
+      <Animated.View style={[styles.mishContainer, { transform: getTransforms() }]}>
         <TouchableOpacity
           onPress={handleMishTap}
           style={styles.mishTouchable}
@@ -271,10 +355,7 @@ export default function MysticMish({
                 style={[
                   styles.sparkle,
                   styles.sparkle1,
-                  {
-                    opacity: sparkleOpacity,
-                    transform: [{ rotate: sparkleRotate }],
-                  },
+                  { opacity: sparkleOpacity, transform: [{ rotate: sparkleRotate }] },
                 ]}
               >
                 <Text style={styles.sparkleText}>✨</Text>
@@ -283,10 +364,7 @@ export default function MysticMish({
                 style={[
                   styles.sparkle,
                   styles.sparkle2,
-                  {
-                    opacity: sparkleOpacity,
-                    transform: [{ rotate: sparkleRotate }],
-                  },
+                  { opacity: sparkleOpacity, transform: [{ rotate: sparkleRotate }] },
                 ]}
               >
                 <Text style={styles.sparkleText}>🌟</Text>
@@ -295,10 +373,7 @@ export default function MysticMish({
                 style={[
                   styles.sparkle,
                   styles.sparkle3,
-                  {
-                    opacity: sparkleOpacity,
-                    transform: [{ rotate: sparkleRotate }],
-                  },
+                  { opacity: sparkleOpacity, transform: [{ rotate: sparkleRotate }] },
                 ]}
               >
                 <Text style={styles.sparkleText}>⭐</Text>
@@ -307,10 +382,7 @@ export default function MysticMish({
                 style={[
                   styles.sparkle,
                   styles.sparkle4,
-                  {
-                    opacity: sparkleOpacity,
-                    transform: [{ rotate: sparkleRotate }],
-                  },
+                  { opacity: sparkleOpacity, transform: [{ rotate: sparkleRotate }] },
                 ]}
               >
                 <Text style={styles.sparkleText}>💫</Text>

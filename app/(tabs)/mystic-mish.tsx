@@ -134,6 +134,75 @@ Sagittarius magic in winter wakes fully when you combine hope with discipline. E
     element: 'Fire',
   };
 
+  // === January 3rd 2026 Full Moon in Cancer (Wolf Supermoon) Spells ===
+
+  const southernJanuaryFullMoon = {
+    title: '🔥 Wolf Moon Fire Release',
+    subtitle: 'Full Moon in Cancer - Southern Hemisphere',
+    description:
+      'A blazing summer spell for emotional sovereignty, ancestral clearing, and fierce self-protection.',
+    seasonalContext:
+      'The first Full Moon of 2026 arrives in Southern summer heat, burning bright in watery Cancer while the Sun stands opposite in Capricorn’s mountain air. This Wolf Supermoon sits closer to Earth than usual, magnifying everything it touches. In the South, summer amplifies the fire element, making this a potent moment to burn away what no longer serves your emotional body and claim your territory with absolute clarity.',
+    fullSpell: `Full Moon in Cancer - Southern Hemisphere
+Theme: emotional sovereignty, ancestral clearing, fierce boundaries
+Items: red or orange candle, fireproof bowl, bay leaves (3 to 5), pen, small glass of spring water, salt
+Colours: scarlet, burnt orange, silver white, deep ocean blue
+
+Steps
+1) Stand outside if possible, barefoot on warm earth. Feel the summer night against your skin. Say aloud:
+"I am the wolf. I know my territory. I protect what matters."
+
+2) Light your candle and place it safely in front of you. On each bay leaf, write one thing you refuse to carry into the rest of this year. This could be a guilt pattern, an inherited wound, a draining relationship dynamic, or a fear that keeps you small.
+
+3) Hold each bay leaf to your heart before burning it in the flame. As it catches, say:
+"This ends with me. The cycle breaks here."
+Drop each burning leaf into your fireproof bowl and watch the smoke rise.
+
+4) When all leaves are ash, add a pinch of salt to the water and drink half. Pour the rest over the ashes, speaking your own name three times with absolute authority.
+
+5) Take the bowl outside and scatter the wet ashes onto the earth or into moving water. Walk away without looking back. The Wolf Moon honours those who release without nostalgia.
+
+6) Before sleep, place your hands on your belly and ribs. Breathe into the space you have just reclaimed. This is your emotional territory now. Guard it.
+
+Note
+This Supermoon magnifies all emotional material. If feelings surge in the days following this ritual, let them. The wolf does not apologise for howling at what it sees clearly in the moonlight.`,
+    moonPhase: 'Full Moon in Cancer (Wolf Supermoon)',
+    element: 'Fire',
+  };
+
+  const northernJanuaryFullMoon = {
+    title: '❄️ Wolf Moon Water Reclamation',
+    subtitle: 'Full Moon in Cancer - Northern Hemisphere',
+    description:
+      'A midwinter spell for emotional truth, ancestral healing, and quiet sovereignty beneath the snow.',
+    seasonalContext:
+      'In the Northern winter, the Wolf Supermoon rises over frozen ground, illuminating everything that lives beneath the surface. Cancer’s waters meet Capricorn’s stone in the deep cold, asking you to look honestly at what you have been holding in the name of care, duty, or inherited obligation. This Moon is closer to Earth than most, pulling at your interior tides with unusual strength. The wolf howls not from aggression, but from clarity about what belongs in the den and what must stay outside.',
+    fullSpell: `Full Moon in Cancer - Northern Hemisphere
+Theme: emotional truth, ancestral healing, boundary setting
+Items: white or silver candle, bowl of clean water (snow or ice melted if possible), smooth stone, paper, pen, small sprig of evergreen
+Colours: pearl white, ice blue, dark forest green, winter grey
+
+Steps
+1) Sit somewhere quiet with your candle lit. Hold the stone in your left hand and feel its weight. Say softly:
+"I am permitted to know what I feel without apology."
+
+2) On your paper, write three truths you have been avoiding about your emotional patterns or family inheritance. Be ruthlessly honest. Cancer under a Supermoon will not accept performance.
+
+3) Read each truth aloud, then dip the evergreen sprig into the water and touch it to your forehead, throat, and heart. Say:
+"I see this. I speak this. I feel this. And I choose differently."
+
+4) Fold the paper small and place it under the bowl of water. Let the candle burn while you sit in silence, watching the flame’s reflection in the water. This is you observing your emotional world without drowning in it.
+
+5) After at least ten minutes, take the paper outside and bury it in frozen earth or snow. The winter will compost what you have released. Keep the stone as a reminder of your sovereignty.
+
+6) Return inside and drink a full glass of water slowly, feeling it travel through your body. You are clearing the channel. The Wolf Moon teaches that protection begins with knowing exactly what you are protecting.
+
+Note
+This Supermoon magnifies all emotional material. If feelings surge in the days following this ritual, let them. The wolf does not apologise for howling at what it sees clearly in the moonlight.`,
+    moonPhase: 'Full Moon in Cancer (Wolf Supermoon)',
+    element: 'Water',
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -387,6 +456,83 @@ Sagittarius magic in winter wakes fully when you combine hope with discipline. E
               <View style={styles.fullSpellContainer}>
                 <Text style={styles.fullSpellTitle}>The Ritual</Text>
                 <Text style={styles.fullSpellText}>{northernDecemberNewMoon.fullSpell}</Text>
+              </View>
+            </LinearGradient>
+          </View>
+
+          {/* January 3rd Full Moon spells */}
+          <View style={styles.spellsSection}>
+            <Text style={styles.sectionTitle}>🌕 January 3rd Full Moon Spell</Text>
+
+            {/* Southern */}
+            <LinearGradient
+              colors={['rgba(212, 175, 55, 0.2)', 'rgba(212, 175, 55, 0.1)']}
+              style={styles.spellCard}
+            >
+              <View style={styles.spellHeader}>
+                <Scroll size={20} color="#d4af37" />
+                <Text style={styles.spellTitle}>{southernJanuaryFullMoon.title}</Text>
+              </View>
+              <Text style={styles.spellSubtitle}>{southernJanuaryFullMoon.subtitle}</Text>
+              <Text style={styles.spellDescription}>{southernJanuaryFullMoon.description}</Text>
+
+              <View style={styles.seasonalContextContainer}>
+                <Text style={styles.seasonalContextTitle}>Seasonal Context</Text>
+                <Text style={styles.seasonalContextText}>
+                  {southernJanuaryFullMoon.seasonalContext}
+                </Text>
+              </View>
+
+              <View style={styles.spellDetails}>
+                <View style={styles.spellDetailItem}>
+                  <Text style={styles.spellDetailLabel}>Moon Phase</Text>
+                  <Text style={styles.spellDetailValue}>{southernJanuaryFullMoon.moonPhase}</Text>
+                </View>
+                <View style={styles.spellDetailItem}>
+                  <Text style={styles.spellDetailLabel}>Element</Text>
+                  <Text style={styles.spellDetailValue}>{southernJanuaryFullMoon.element}</Text>
+                </View>
+              </View>
+
+              <View style={styles.fullSpellContainer}>
+                <Text style={styles.fullSpellTitle}>The Ritual</Text>
+                <Text style={styles.fullSpellText}>{southernJanuaryFullMoon.fullSpell}</Text>
+              </View>
+            </LinearGradient>
+
+            {/* Northern */}
+            <LinearGradient
+              colors={['rgba(139, 157, 195, 0.15)', 'rgba(139, 157, 195, 0.05)']}
+              style={styles.spellCard}
+            >
+              <View style={styles.spellHeader}>
+                <Scroll size={20} color="#8b9dc3" />
+                <Text style={styles.spellTitle}>{northernJanuaryFullMoon.title}</Text>
+              </View>
+              <Text style={styles.spellSubtitle}>{northernJanuaryFullMoon.subtitle}</Text>
+              <Text style={styles.spellDescription}>{northernJanuaryFullMoon.description}</Text>
+
+              <View style={styles.seasonalContextContainer}>
+                <Text style={styles.seasonalContextTitle}>Seasonal Context</Text>
+                <Text style={styles.seasonalContextText}>
+                  {northernJanuaryFullMoon.seasonalContext}
+                </Text>
+              </View>
+
+              <View style={styles.spellDetails}>
+                <View style={styles.spellDetailItem}>
+                  <Text style={styles.spellDetailLabel}>Moon Phase</Text>
+                  <Text style={styles.spellDetailValue}>{northernJanuaryFullMoon.moonPhase}</Text>
+                </View>
+                <View style={styles.spellDetailItem}>
+                  <Text style={styles.spellDetailLabel}>Element</Text>
+                  <Text style={styles.spellDetailValue}>{northernJanuaryFullMoon.element}</Text>
+                </View>
+              </View>
+
+              <View style={styles.fullSpellContainer}>
+                <Text style={styles.fullSpellTitle}>The Ritual</Text>
+                <Text style={styles.fullSpellText}>{northernJanuaryFullMoon.fullSpell}</Text>
               </View>
             </LinearGradient>
           </View>
