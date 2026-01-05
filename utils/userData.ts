@@ -1,5 +1,4 @@
-// utils/userData.ts 
-import type { User } from '@supabase/supabase-js';
+// utils/userData.ts
 import { CuspResult } from './astrology';
 import { clearLocalAuthData } from './auth';
 
@@ -10,14 +9,14 @@ import { supabase } from '@/utils/supabase';
 export interface UserProfile {
   email: string;
   name: string;
-  birthDate: string;       // ISO string
+  birthDate: string; // ISO string
   birthTime: string;
   birthLocation: string;
   hemisphere: 'Northern' | 'Southern';
   cuspResult: CuspResult;
-  createdAt: string;       // ISO string
-  lastLoginAt?: string;    // ISO string
-  needsRecalc?: boolean;   // Flag for profiles that need recalculation
+  createdAt: string; // ISO string
+  lastLoginAt?: string; // ISO string
+  needsRecalc?: boolean; // Flag for profiles that need recalculation
 }
 
 // Session-level promise to avoid duplicate fetches
@@ -49,7 +48,7 @@ const storage = {
   },
   async multiRemove(keys: string[]): Promise<void> {
     if (typeof window !== 'undefined' && window.localStorage) {
-      keys.forEach(key => window.localStorage.removeItem(key));
+      keys.forEach((key) => window.localStorage.removeItem(key));
     }
   },
 };
@@ -63,30 +62,73 @@ export function clearUserDataPromise(): void {
 let _forceCacheRefresh = true;
 let _cacheVersion = Date.now(); // Invalidate all existing caches
 
+// Legacy key (do not use for per-user profile caching)
 const USER_DATA_KEY = '@astro_cusp_user_data';
+
+// New per-user cache prefix
+const USER_DATA_KEY_PREFIX = '@astro_cusp_user_data:';
+const LAST_AUTH_USER_ID_KEY = '@astro_cusp_last_auth_user_id';
+
+// ---------------- Cache isolation helpers ----------------
+async function purgeAllUserProfileCaches(): Promise<void> {
+  try {
+    const keys = await storage.getAllKeys();
+    const toRemove = keys.filter((k) => k.startsWith(USER_DATA_KEY_PREFIX));
+    if (toRemove.length) {
+      await storage.multiRemove(toRemove);
+      console.log('🧹 [userData] purgeAllUserProfileCaches removed', toRemove.length, 'keys');
+    }
+  } catch (e) {
+    console.warn('⚠️ [userData] purgeAllUserProfileCaches error:', e);
+  }
+}
+
+/**
+ * If the signed-in user changes, wipe any cached profile to prevent
+ * cross-account data appearing.
+ */
+async function enforceAuthUserCacheIsolation(currentUserId: string): Promise<void> {
+  try {
+    const last = await storage.getItem(LAST_AUTH_USER_ID_KEY);
+
+    if (last && last !== currentUserId) {
+      console.warn('⚠️ [userData] Auth user changed, clearing cached profiles', {
+        lastUserId: last,
+        currentUserId,
+      });
+
+      await purgeAllUserProfileCaches();
+      await storage.removeItem(USER_DATA_KEY); // legacy
+    }
+
+    await storage.setItem(LAST_AUTH_USER_ID_KEY, currentUserId);
+  } catch (e) {
+    console.warn('⚠️ [userData] enforceAuthUserCacheIsolation error:', e);
+  }
+}
 
 // ---------------- Helpers ----------------
 function computeCuspFallback(birthDate?: string): CuspResult | null {
   if (!birthDate) return null;
-  
+
   // PRODUCTION CRITICAL: Never create profiles with placeholder dates
   if (birthDate === '1900-01-01' || birthDate.startsWith('1900-01-01')) {
     console.error('❌ [computeCuspFallback] PRODUCTION: Refusing to compute for placeholder date:', birthDate);
     return null;
   }
-  
+
   try {
     console.log('🔍 [computeCuspFallback] PRODUCTION: Computing fallback for birth date:', birthDate);
-    
+
     // Parse YYYY-MM-DD string directly without creating Date object
     const [year, month, day] = birthDate.split('-').map(Number);
-    
+
     // Validate the date is reasonable (not 1900 or future)
     if (year < 1920 || year > new Date().getFullYear()) {
       console.error('❌ [computeCuspFallback] PRODUCTION: Invalid year:', year, 'for date:', birthDate);
       return null;
     }
-    
+
     // Check for Sagittarius-Capricorn cusp (Dec 18-24)
     if (month === 12 && day >= 18 && day <= 24) {
       console.log('✅ [computeCuspFallback] PRODUCTION: Detected Sagittarius-Capricorn cusp for:', birthDate);
@@ -96,10 +138,11 @@ function computeCuspFallback(birthDate?: string): CuspResult | null {
         secondarySign: 'Capricorn',
         cuspName: 'Sagittarius–Capricorn Cusp',
         sunDegree: 28.5 + Math.random() * 2,
-        description: 'You are born on the Sagittarius–Capricorn Cusp, The Cusp of Prophecy. This unique position gives you traits from both Sagittarius and Capricorn.',
+        description:
+          'You are born on the Sagittarius–Capricorn Cusp, The Cusp of Prophecy. This unique position gives you traits from both Sagittarius and Capricorn.',
       };
     }
-    
+
     // Check other cusp dates
     const CUSP_DATES = [
       { signs: ['Pisces', 'Aries'], startDate: '19/03', endDate: '24/03', name: 'Pisces–Aries Cusp' },
@@ -114,24 +157,24 @@ function computeCuspFallback(birthDate?: string): CuspResult | null {
       { signs: ['Capricorn', 'Aquarius'], startDate: '17/01', endDate: '23/01', name: 'Capricorn–Aquarius Cusp' },
       { signs: ['Aquarius', 'Pisces'], startDate: '15/02', endDate: '21/02', name: 'Aquarius–Pisces Cusp' },
     ];
-    
+
     // Helper function to check if date falls in cusp range
-    function isDateInCuspRange(day, month, startDate, endDate) {
+    function isDateInCuspRange(d: number, m: number, startDate: string, endDate: string) {
       const [startDay, startMonth] = startDate.split('/').map(Number);
       const [endDay, endMonth] = endDate.split('/').map(Number);
-      
+
       if (startMonth > endMonth) {
         // Crosses year boundary, for completeness
-        return (month === startMonth && day >= startDay) || (month === endMonth && day <= endDay);
+        return (m === startMonth && d >= startDay) || (m === endMonth && d <= endDay);
       } else {
         // Same month range
-        if (month === startMonth && month === endMonth) return day >= startDay && day <= endDay;
-        if (month === startMonth) return day >= startDay;
-        if (month === endMonth) return day <= endDay;
+        if (m === startMonth && m === endMonth) return d >= startDay && d <= endDay;
+        if (m === startMonth) return d >= startDay;
+        if (m === endMonth) return d <= endDay;
         return false;
       }
     }
-    
+
     // Check all cusp dates
     for (const cusp of CUSP_DATES) {
       if (isDateInCuspRange(day, month, cusp.startDate, cusp.endDate)) {
@@ -146,7 +189,7 @@ function computeCuspFallback(birthDate?: string): CuspResult | null {
         };
       }
     }
-    
+
     const { calculateSunSign } = require('./astrology');
     const primarySign = calculateSunSign(birthDate);
     console.log('✅ [computeCuspFallback] PRODUCTION: Calculated sign:', primarySign, 'for date:', birthDate);
@@ -156,6 +199,7 @@ function computeCuspFallback(birthDate?: string): CuspResult | null {
       day,
       originalString: birthDate,
     });
+
     return {
       isOnCusp: false,
       primarySign,
@@ -174,7 +218,7 @@ async function purgeUserCache(email: string): Promise<void> {
     const keys = await storage.getAllKeys();
     const lower = email.toLowerCase();
     const prefix = `@astro_cusp_monthly_${lower}`;
-    const toRemove = keys.filter(k => k.toLowerCase().startsWith(prefix));
+    const toRemove = keys.filter((k) => k.toLowerCase().startsWith(prefix));
     if (toRemove.length) {
       await storage.multiRemove(toRemove);
       console.log('🧹 [userData] purgeUserCache removed', toRemove.length, 'keys for', email);
@@ -187,45 +231,50 @@ async function purgeUserCache(email: string): Promise<void> {
 // Clean up any incomplete/corrupted cache
 export async function healUserCache(): Promise<void> {
   try {
-    // Clear any stale auth data that might cause token errors
     await clearLocalAuthData();
 
-    const raw = await storage.getItem(USER_DATA_KEY);
-    if (!raw) return;
-    const profile = JSON.parse(raw);
-    if (!profile?.cuspResult) {
-      console.log('🔧 [userData] Removing incomplete cached profile');
+    // Remove legacy cache if incomplete
+    try {
+      const rawLegacy = await storage.getItem(USER_DATA_KEY);
+      if (rawLegacy) {
+        const legacy = JSON.parse(rawLegacy);
+        if (!legacy?.cuspResult) {
+          console.log('🔧 [userData] Removing incomplete legacy cached profile');
+          await storage.removeItem(USER_DATA_KEY);
+        }
+      }
+    } catch {
       await storage.removeItem(USER_DATA_KEY);
     }
-  } catch {
-    console.log('🔧 [userData] Clearing corrupted cache');
-    await storage.removeItem(USER_DATA_KEY);
+
+    // Remove any per-user caches that are incomplete
+    const keys = await storage.getAllKeys();
+    const perUser = keys.filter((k) => k.startsWith(USER_DATA_KEY_PREFIX));
+    for (const k of perUser) {
+      try {
+        const raw = await storage.getItem(k);
+        if (!raw) continue;
+        const p = JSON.parse(raw);
+        if (!p?.cuspResult || !p?.email) {
+          console.log('🔧 [userData] Removing incomplete per-user cached profile:', k);
+          await storage.removeItem(k);
+        }
+      } catch {
+        await storage.removeItem(k);
+      }
+    }
+  } catch (e) {
+    console.log('🔧 [userData] healUserCache error:', e);
   }
 }
 
 // ---------------- Save / Update ----------------
 export async function saveUserData(userData: UserProfile): Promise<void> {
   try {
-    // Clear the session promise to force refresh on next getUserData call
     _userDataPromise = null;
-    
-    // Force cache refresh flag to ensure fresh data on next fetch
     _forceCacheRefresh = true;
 
-    // PETER DEBUG: Enhanced logging for petermaricar@bigpond.com
     const isPeter = userData.email?.toLowerCase() === 'petermaricar@bigpond.com';
-    if (isPeter) {
-      console.log('🔍 [PETER DEBUG] Starting saveUserData for Peter:', {
-        email: userData.email,
-        name: userData.name,
-        birthDate: userData.birthDate,
-        birthTime: userData.birthTime,
-        birthLocation: userData.birthLocation,
-        hemisphere: userData.hemisphere,
-        hasCuspResult: !!userData.cuspResult,
-        cuspResultDetails: userData.cuspResult,
-      });
-    }
 
     console.log('💾 [userData] saveUserData:', {
       email: userData.email,
@@ -249,44 +298,34 @@ export async function saveUserData(userData: UserProfile): Promise<void> {
       lastLoginAt: userData.lastLoginAt || new Date().toISOString(),
     };
 
-    // Get current user to ensure we are saving to the right cache and row
     const { data: { user } } = await supabase.auth.getUser();
 
     if (user) {
+      await enforceAuthUserCacheIsolation(user.id);
+
+      const userCacheKey = `${USER_DATA_KEY_PREFIX}${user.id}`;
+
       if (isPeter) {
         console.log('🔍 [PETER DEBUG] Auth user found:', {
           userId: user.id,
           email: user.email,
-          userCacheKey: `${USER_DATA_KEY}:${user.id}`,
+          userCacheKey,
         });
       }
-      
-      // Save to user-specific cache
-      const userCacheKey = `${USER_DATA_KEY}:${user.id}`;
+
       await storage.setItem(userCacheKey, JSON.stringify(dataToSave));
-      
+      await storage.setItem(LAST_AUTH_USER_ID_KEY, user.id);
+
       if (isPeter) {
-        // Verify the save worked
         const verification = await storage.getItem(userCacheKey);
         console.log('🔍 [PETER DEBUG] Cache save verification:', {
           saved: !!verification,
           dataLength: verification?.length,
-          canParse: verification
-            ? (() => {
-                try {
-                  JSON.parse(verification);
-                  return true;
-                } catch {
-                  return false;
-                }
-              })()
-            : false,
         });
       }
 
-      console.log('✅ [userData] Saved to local cache');
+      console.log('✅ [userData] Saved to local per-user cache');
 
-      // Upsert into Supabase user_profiles so Cosmic Profile and other screens see it
       const { error: upsertError } = await supabase
         .from('user_profiles')
         .upsert(
@@ -298,7 +337,7 @@ export async function saveUserData(userData: UserProfile): Promise<void> {
             birth_time: dataToSave.birthTime,
             birth_location: dataToSave.birthLocation,
             hemisphere: dataToSave.hemisphere,
-            cusp_result: dataToSave.cuspResult, // JSON column
+            cusp_result: dataToSave.cuspResult,
             created_at: dataToSave.createdAt,
             last_login_at: dataToSave.lastLoginAt,
           },
@@ -312,31 +351,18 @@ export async function saveUserData(userData: UserProfile): Promise<void> {
 
       console.log('✅ [userData] Profile upserted to Supabase for', dataToSave.email);
     } else {
-      // Fallback for anonymous users
-      await storage.setItem(USER_DATA_KEY, JSON.stringify(dataToSave));
-      console.log('✅ [userData] Saved anonymous profile to local cache (no auth user)');
+      // If no auth user, do NOT write a global profile cache that could leak
+      console.warn('⚠️ [userData] No auth user during saveUserData, refusing to write legacy cache');
     }
 
-    // Clear any legacy email-scoped caches
     if (userData.email) {
       await purgeUserCache(userData.email);
       console.log('🧹 [userData] Purged monthly caches for', userData.email);
     }
-    
-    console.log('✅ [userData] saveUserData completed - cache will refresh on next fetch');
+
+    console.log('✅ [userData] saveUserData completed');
   } catch (err: any) {
     console.error('❌ [userData] Error saving user data:', err);
-    
-    // PETER DEBUG: Extra error details
-    if (userData.email?.toLowerCase() === 'petermaricar@bigpond.com') {
-      console.error('🔍 [PETER DEBUG] Save failed with details:', {
-        errorMessage: err?.message,
-        errorStack: err?.stack,
-        userData,
-        timestamp: new Date().toISOString(),
-      });
-    }
-    
     throw new Error('Failed to save user data');
   }
 }
@@ -346,27 +372,27 @@ export async function getUserData(forceFresh = false): Promise<UserProfile | nul
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const userCacheKey = `${USER_DATA_KEY}:${user.id}`;
+  await enforceAuthUserCacheIsolation(user.id);
 
-  // Check cache first (unless forcing fresh)
+  const userCacheKey = `${USER_DATA_KEY_PREFIX}${user.id}`;
+
   if (!forceFresh) {
     try {
       const cached = await storage.getItem(userCacheKey);
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (parsed.cuspResult && parsed.email === user.email) {
+        if (parsed?.cuspResult && parsed?.email?.toLowerCase() === (user.email || '').toLowerCase()) {
           console.log('💾 [userData] Using cached profile for', user.email);
           return parsed;
         }
       }
-    } catch (e) {
+    } catch {
       console.warn('⚠️ [userData] Invalid cached data, will fetch fresh');
     }
   }
 
   console.log('🔍 [userData] Fetching fresh profile from Supabase for', user.email);
 
-  // Fetch from Supabase
   const { data: profile, error } = await supabase
     .from('user_profiles')
     .select('*')
@@ -384,7 +410,7 @@ export async function getUserData(forceFresh = false): Promise<UserProfile | nul
   }
 
   // SECURITY: Verify this profile belongs to the current user
-  if (profile.email?.toLowerCase() !== user.email?.toLowerCase()) {
+  if ((profile.email || '').toLowerCase() !== (user.email || '').toLowerCase()) {
     console.error('❌ [userData] SECURITY: Profile email mismatch!', {
       profileEmail: profile.email,
       authEmail: user.email,
@@ -393,54 +419,50 @@ export async function getUserData(forceFresh = false): Promise<UserProfile | nul
     return null;
   }
 
-  // Parse cusp_result from database
   let cuspResult: CuspResult | undefined;
+
   try {
-    cuspResult = typeof profile.cusp_result === 'string' 
-      ? JSON.parse(profile.cusp_result) 
-      : profile.cusp_result;
-    
-    // Validate minimal shape
+    cuspResult = typeof profile.cusp_result === 'string' ? JSON.parse(profile.cusp_result) : profile.cusp_result;
+
     const valid =
       !!cuspResult &&
-      (
-        (cuspResult.isOnCusp && !!cuspResult.cuspName && !!cuspResult.primarySign) ||
-        (!cuspResult.isOnCusp && !!cuspResult.primarySign)
-      );
+      ((cuspResult.isOnCusp && !!cuspResult.cuspName && !!cuspResult.primarySign) ||
+        (!cuspResult.isOnCusp && !!cuspResult.primarySign));
 
     if (!valid) {
       console.warn('⚠️ [userData] Invalid cusp_result, flagging for recalc', { email: profile.email, cuspResult });
+
       const userProfile: UserProfile = {
         email: profile.email,
         name: profile.name ?? '',
         birthDate: profile.birth_date ?? '',
         birthTime: profile.birth_time ?? '',
         birthLocation: profile.birth_location ?? '',
-        hemisphere: (profile.hemisphere === 'Southern' ? 'Southern' : 'Northern'),
+        hemisphere: profile.hemisphere === 'Southern' ? 'Southern' : 'Northern',
         cuspResult: undefined as any,
         createdAt: profile.created_at,
         lastLoginAt: profile.last_login_at ?? undefined,
         needsRecalc: true,
       };
-      
-      // Do not cache invalid profile
+
       return userProfile;
     }
   } catch (e) {
     console.error('❌ [userData] Error parsing cusp_result:', e);
+
     const userProfile: UserProfile = {
       email: profile.email,
       name: profile.name ?? '',
       birthDate: profile.birth_date ?? '',
       birthTime: profile.birth_time ?? '',
       birthLocation: profile.birth_location ?? '',
-      hemisphere: (profile.hemisphere === 'Southern' ? 'Southern' : 'Northern'),
+      hemisphere: profile.hemisphere === 'Southern' ? 'Southern' : 'Northern',
       cuspResult: undefined as any,
       createdAt: profile.created_at,
       lastLoginAt: profile.last_login_at ?? undefined,
       needsRecalc: true,
     };
-    
+
     return userProfile;
   }
 
@@ -458,17 +480,18 @@ export async function getUserData(forceFresh = false): Promise<UserProfile | nul
     birthDate: profile.birth_date ?? '',
     birthTime: profile.birth_time ?? '',
     birthLocation: profile.birth_location ?? '',
-    hemisphere: (profile.hemisphere === 'Southern' ? 'Southern' : 'Northern'),
+    hemisphere: profile.hemisphere === 'Southern' ? 'Southern' : 'Northern',
     cuspResult,
     createdAt: profile.created_at,
     lastLoginAt: profile.last_login_at ?? undefined,
     needsRecalc: false,
   };
 
-  // Cache the valid profile
   await storage.setItem(userCacheKey, JSON.stringify(userProfile));
+  await storage.setItem(LAST_AUTH_USER_ID_KEY, user.id);
+
   console.log('✅ [userData] Cached fresh profile for', userProfile.email);
-  
+
   return userProfile;
 }
 
@@ -487,29 +510,15 @@ export async function updateLastLogin(): Promise<void> {
 
 export async function clearUserData(): Promise<void> {
   try {
-    console.log('🧹 [clearUserData] Clearing user data caches...');
-    
-    // Clear the session-level promise cache
+    console.log('🧹 [clearUserData] Clearing all user data caches...');
+
     _userDataPromise = null;
-    
-    // Clear user-specific cache only
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const userCacheKey = `${USER_DATA_KEY}:${user.id}`;
-        await storage.removeItem(userCacheKey);
-        console.log('🧹 [clearUserData] Cleared user-specific cache for:', user.email);
-      }
-    } catch (authError: any) {
-      // Only clear all caches if it is a critical auth error, not session refresh
-      console.log('🧹 [clearUserData] Auth check failed, clearing legacy cache only');
-      await storage.removeItem(USER_DATA_KEY);
-    }
-    
-    // Clear legacy cache
-    await storage.removeItem(USER_DATA_KEY);
-    
-    console.log('🧹 [userData] Local user cache cleared');
+
+    await purgeAllUserProfileCaches();
+    await storage.removeItem(USER_DATA_KEY); // legacy
+    await storage.removeItem(LAST_AUTH_USER_ID_KEY);
+
+    console.log('✅ [clearUserData] All user caches cleared');
   } catch (e) {
     console.error('❌ [userData] clearUserData error:', e);
     throw new Error('Failed to clear user data');
@@ -529,7 +538,7 @@ export async function updateUserProfile(updates: Partial<UserProfile>): Promise<
   const current = await getUserData();
   if (!current) throw new Error('No user data found');
   const merged = { ...current, ...updates };
-  await saveUserData(merged);
+  await saveUserData(merged as UserProfile);
   console.log('✅ [userData] Profile updated locally');
 }
 
@@ -538,22 +547,15 @@ export async function debugStorage(): Promise<void> {
     console.log('🔍 [userData] === DEBUG STORAGE ===');
     const keys = await storage.getAllKeys();
     console.log('🔍 keys:', keys);
-    const raw = await storage.getItem(USER_DATA_KEY);
-    console.log('🔍 userData length:', raw?.length ?? 0);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        console.log('🔍 parsed:', {
-          email: parsed.email,
-          hasCuspResult: !!parsed.cuspResult,
-          hemisphere: parsed.hemisphere,
-          createdAt: parsed.createdAt,
-          lastLoginAt: parsed.lastLoginAt,
-        });
-      } catch (e) {
-        console.error('❌ parse stored data:', e);
-      }
-    }
+
+    const legacy = await storage.getItem(USER_DATA_KEY);
+    console.log('🔍 legacy userData length:', legacy?.length ?? 0);
+
+    const lastUserId = await storage.getItem(LAST_AUTH_USER_ID_KEY);
+    console.log('🔍 last auth user id:', lastUserId);
+
+    const perUserKeys = keys.filter((k) => k.startsWith(USER_DATA_KEY_PREFIX));
+    console.log('🔍 per-user cache keys:', perUserKeys);
   } catch (e) {
     console.error('❌ [userData] debugStorage error:', e);
   }
