@@ -2,90 +2,153 @@
 import SunCalc from 'suncalc';
 
 export type HemLabel = 'Northern' | 'Southern';
+type MajorPhase = 'New Moon' | 'First Quarter' | 'Full Moon' | 'Last Quarter';
 
-function nowInSydney(): Date {
-  // Create a Date representing *Sydney's* current local time
-  // (JS Date stores UTC internally; this trick shifts to the target TZ)
-  const sydneyNowStr = new Date().toLocaleString('en-US', { timeZone: 'Australia/Sydney' });
-  return new Date(sydneyNowStr);
-}
+const SYDNEY_TZ = 'Australia/Sydney';
 
-function phaseName(phase: number): { name: string; key: 'New Moon'|'First Quarter'|'Full Moon'|'Last Quarter'|'Waxing Crescent'|'Waxing Gibbous'|'Waning Gibbous'|'Waning Crescent' } {
-  // phase in [0..1): 0 New, 0.25 First Quarter, 0.5 Full, 0.75 Last Quarter
-  if (phase === 0) return { name: 'New Moon', key: 'New Moon' };
-  if (Math.abs(phase - 0.25) < 0.0125) return { name: 'First Quarter', key: 'First Quarter' };
-  if (Math.abs(phase - 0.5) < 0.0125) return { name: 'Full Moon', key: 'Full Moon' };
-  if (Math.abs(phase - 0.75) < 0.0125) return { name: 'Last Quarter', key: 'Last Quarter' };
+function phaseName(phase: number): {
+  name:
+    | 'New Moon'
+    | 'First Quarter'
+    | 'Full Moon'
+    | 'Last Quarter'
+    | 'Waxing Crescent'
+    | 'Waxing Gibbous'
+    | 'Waning Gibbous'
+    | 'Waning Crescent';
+  key:
+    | 'New Moon'
+    | 'First Quarter'
+    | 'Full Moon'
+    | 'Last Quarter'
+    | 'Waxing Crescent'
+    | 'Waxing Gibbous'
+    | 'Waning Gibbous'
+    | 'Waning Crescent';
+} {
+  // SunCalc phase is in [0..1): 0 New, 0.25 First Quarter, 0.5 Full, 0.75 Last Quarter
+  const eps = 0.0125;
+
+  if (phase < eps || phase > 1 - eps) return { name: 'New Moon', key: 'New Moon' };
+  if (Math.abs(phase - 0.25) < eps) return { name: 'First Quarter', key: 'First Quarter' };
+  if (Math.abs(phase - 0.5) < eps) return { name: 'Full Moon', key: 'Full Moon' };
+  if (Math.abs(phase - 0.75) < eps) return { name: 'Last Quarter', key: 'Last Quarter' };
 
   if (phase > 0 && phase < 0.25) return { name: 'Waxing Crescent', key: 'Waxing Crescent' };
   if (phase > 0.25 && phase < 0.5) return { name: 'Waxing Gibbous', key: 'Waxing Gibbous' };
   if (phase > 0.5 && phase < 0.75) return { name: 'Waning Gibbous', key: 'Waning Gibbous' };
-  // phase >= 0.75 && < 1
   return { name: 'Waning Crescent', key: 'Waning Crescent' };
 }
 
-function fmtDateAU(d: Date): string {
-  // dd/mm/yyyy for your UI (“20/08/2025”)
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yyyy = d.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
+function fmtDateSydneyAU(d: Date): string {
+  // dd/mm/yyyy in Australia/Sydney regardless of runtime timezone
+  return d.toLocaleDateString('en-AU', {
+    timeZone: SYDNEY_TZ,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
 }
 
-function findNextMajorPhase(start: Date): { nextPhase: 'New Moon'|'First Quarter'|'Full Moon'|'Last Quarter'; date: Date } {
-  // March forward to the next quarter within ~30 days
-  // We look for phase crossing near 0, 0.25, 0.5, 0.75
-  const targets: Array<{label:'New Moon'|'First Quarter'|'Full Moon'|'Last Quarter', value:number}> = [
+function unwrapPhase(p: number, prev: number): number {
+  // Handle wrap-around near New Moon (0/1 boundary)
+  // If we jump backwards by a lot, treat as wrap forward.
+  if (prev > 0.9 && p < 0.1) return p + 1;
+  return p;
+}
+
+function refineCrossing(
+  t0: Date,
+  p0: number,
+  t1: Date,
+  p1: number,
+  target: number
+): Date {
+  // Binary search to tighten the crossing time within this interval
+  let loT = t0.getTime();
+  let hiT = t1.getTime();
+  let loP = p0;
+  let hiP = p1;
+
+  for (let i = 0; i < 18; i++) {
+    const midT = Math.floor((loT + hiT) / 2);
+    const mid = new Date(midT);
+    const raw = SunCalc.getMoonIllumination(mid).phase;
+    const midP = unwrapPhase(raw, loP);
+
+    if (midP >= target) {
+      hiT = midT;
+      hiP = midP;
+    } else {
+      loT = midT;
+      loP = midP;
+    }
+  }
+  return new Date(hiT);
+}
+
+function findNextMajorPhase(start: Date): { nextPhase: MajorPhase; date: Date } {
+  const targets: Array<{ label: MajorPhase; value: number }> = [
     { label: 'New Moon', value: 0 },
     { label: 'First Quarter', value: 0.25 },
     { label: 'Full Moon', value: 0.5 },
     { label: 'Last Quarter', value: 0.75 },
   ];
 
-  const startIll = SunCalc.getMoonIllumination(start);
-  const currentPhase = startIll.phase; // 0..1
+  const startRaw = SunCalc.getMoonIllumination(start).phase;
+  let prevPhase = startRaw;
+  let prevTime = start;
 
-  // try hourly steps to catch exact day/time more precisely
-  const maxHours = 24 * 35; // safety
-  for (let h = 1; h <= maxHours; h++) {
-    const d = new Date(start.getTime() + h * 3600 * 1000);
-    const p = SunCalc.getMoonIllumination(d).phase;
+  // Step in 30 minute increments up to 40 days
+  const stepMs = 30 * 60 * 1000;
+  const maxSteps = Math.ceil((40 * 24 * 60) / 30);
 
-    for (const t of targets) {
-      // detect when we cross a target from below to close match
-      const crossed =
-        (currentPhase <= t.value && p >= t.value) ||
-        (t.value === 0 && currentPhase > 0.95 && p < 0.05); // wrap-around near new moon
+  for (let i = 1; i <= maxSteps; i++) {
+    const t = new Date(start.getTime() + i * stepMs);
+    const raw = SunCalc.getMoonIllumination(t).phase;
+    const currPhase = unwrapPhase(raw, prevPhase);
 
-      if (crossed || Math.abs(p - t.value) < 0.005) {
-        return { nextPhase: t.label, date: d };
+    for (const target of targets) {
+      // Use unwrapped target for New Moon wrap handling
+      const targetVal = target.value === 0 && prevPhase > 0.9 ? 1 : target.value;
+
+      const crossed = prevPhase < targetVal && currPhase >= targetVal;
+      const closeEnough = Math.abs(currPhase - targetVal) < 0.0015;
+
+      if (crossed || closeEnough) {
+        const exact = refineCrossing(prevTime, prevPhase, t, currPhase, targetVal);
+        return { nextPhase: target.label, date: exact };
       }
     }
+
+    prevPhase = currPhase;
+    prevTime = t;
   }
-  // fallback: Full Moon in ~2 weeks (rarely used)
+
+  // Fallback: two weeks ahead
   return { nextPhase: 'Full Moon', date: new Date(start.getTime() + 14 * 86400 * 1000) };
 }
 
 /**
- * Returns robust lunar data using Sydney local time.
- * Illumination is global; hemisphere only affects icon/orientation, not %.
+ * Lunar data.
+ * Calculations use the real current instant (UTC under the hood).
+ * Display date is always formatted for Australia/Sydney.
  */
 export function getLunarNow(hemisphere: HemLabel) {
-  const now = nowInSydney();
+  const now = new Date();
+
   const { fraction, phase } = SunCalc.getMoonIllumination(now);
   const name = phaseName(phase);
-
-  // Percent illumination (rounded to nearest whole)
   const illuminationPct = Math.round(fraction * 100);
 
   const { nextPhase, date } = findNextMajorPhase(now);
 
   return {
-    phase: name.name,                  // e.g., "Waning Gibbous"
-    illumination: illuminationPct,     // e.g., 86
+    phase: name.name,
+    illumination: illuminationPct,
     nextPhase,
-    nextPhaseDate: fmtDateAU(date),    // e.g., "20/08/2025"
-    hemisphere,                        // keep for UI orientation
-    timestampSydneyISO: now.toISOString(),
+    nextPhaseDate: fmtDateSydneyAU(date),
+    hemisphere,
+    timestampISO: now.toISOString(),
   };
 }
