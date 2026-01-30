@@ -1,4 +1,4 @@
-// app/(tabs)/MysticMish.tsx
+// app/(tabs)/MysticMish.tsx 
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -25,61 +25,62 @@ if (typeof Platform === 'undefined') {
   (global as any).Platform = { OS: 'web' };
 }
 
-// ✅ Pre-import the avatar image
+// ✅ Pre import the avatar image
 const mishAvatar = require('../../assets/images/mystic-mish/headshot.png');
 
-function buildWolfMoonSpell(hemisphere: 'Northern' | 'Southern') {
+function buildSnowMoonSpell(hemisphere: 'Northern' | 'Southern') {
   if (hemisphere === 'Southern') {
     return {
-      title: '🔥 Wolf Moon Fire Release',
+      title: '🌾 Grain Moon Release & Nourishment',
       subtitle: 'Full Moon in Cancer - Southern Hemisphere',
       description:
-        'A blazing summer spell for emotional sovereignty, ancestral clearing, and fierce self-protection.',
+        'A late summer spell for emotional nourishment, ancestral completion, and choosing what you carry forward.',
       seasonalContext:
-        "The first Full Moon of 2026 arrives in Southern summer heat, burning bright in watery Cancer while the Sun stands opposite in Capricorn's mountain air. This Wolf Supermoon sits closer to Earth than usual, magnifying everything it touches. In the South, summer amplifies the fire element, making this a potent moment to burn away what no longer serves your emotional body and claim your territory with absolute clarity.",
+        "The February Full Moon rises over the Southern Hemisphere in late summer, when the land is heavy with growth and the air still holds warmth from the sun. Often called the Grain Moon in seasonal folk naming, this lunation marks a moment of culmination rather than survival. What has been growing beneath the surface is now visible, ripe, and ready to be sorted. With the Moon in Cancer and the Sun opposing in Capricorn, you are asked to choose what truly nourishes you and consciously release the rest.",
       fullSpell: `Full Moon in Cancer - Southern Hemisphere
-Theme: emotional sovereignty, ancestral clearing, fierce boundaries
-Items: red or orange candle, fireproof bowl, bay leaves (3 to 5), pen, small glass of spring water, salt
-Colours: scarlet, burnt orange, silver white, deep ocean blue
+Theme: emotional nourishment, ancestral completion, conscious release
+Items: yellow or soft gold candle, small bowl of grains (rice, barley, oats, or seeds), paper, pen, heat safe bowl, small glass of water, salt
+Colours: wheat gold, warm sand, ocean blue, soft white
 
 Steps
-1) Stand outside if possible, barefoot on warm earth. Feel the summer night against your skin. Say aloud: "I am the wolf. I know my territory. I protect what matters."
-2) Light your candle and place it safely in front of you. On each bay leaf, write one thing you refuse to carry into the rest of this year: a guilt pattern, an inherited wound, a relationship dynamic that drains you, a fear that keeps you small.
-3) Hold each bay leaf to your heart before burning it in the flame. As it catches, say: "This ends with me. The cycle breaks here." Drop each burning leaf into your fireproof bowl and watch the smoke rise.
-4) When all leaves are ash, add a pinch of salt to the water and drink half. Pour the rest over the ashes, speaking your own name three times with absolute authority.
-5) Take the bowl outside and scatter the wet ashes onto the earth or into moving water. Walk away without looking back. The Wolf Moon honours those who release without nostalgia.
-6) Before sleep, place your hands on your belly and ribs. Breathe into the space you have just reclaimed. This is your emotional territory now. Guard it.
+1) Sit somewhere calm, preferably outdoors or near an open window. Place the grains in front of you and light the candle. Rest one hand on your belly and say: "I honour what has grown within me. I choose what feeds me now."
+2) On the paper, write three emotional patterns, obligations, or inherited stories that have completed their purpose. These are not failures. They are harvests.
+3) Tear the paper into strips. As you tear each one, say: "This has fed me enough. I release it with gratitude."
+4) Place a pinch of grain into the bowl for each strip you tear, acknowledging what it once provided. Safely burn the paper and let the ash fall into the bowl.
+5) Add a pinch of salt to the water and drink half slowly. Use the remaining water to dampen the grains and ash, saying your name once with clarity.
+6) Return the mixture to the earth, garden, or compost. Do not rush. The Grain Moon blesses deliberate endings.
+7) Before sleep, place your hands on your heart and stomach. Breathe deeply and visualise only what truly nourishes you remaining.
 
 Note
-This Supermoon magnifies all emotional material. If feelings surge in the days following this ritual, let them. The wolf does not apologise for howling at what it sees clearly in the moonlight.`,
-      moonPhase: 'Full Moon in Cancer (Wolf Supermoon)',
-      element: 'Fire',
+This Full Moon heightens emotional awareness around care, family, and obligation. Treat what arises as information, not urgency. The Grain Moon teaches discernment.`,
+      moonPhase: 'Full Moon in Cancer (Grain Moon)',
+      element: 'Earth & Water',
     };
   }
 
   return {
-    title: '❄️ Wolf Moon Water Reclamation',
+    title: '❄️ Snow Moon Water Reclamation',
     subtitle: 'Full Moon in Cancer - Northern Hemisphere',
     description:
       'A midwinter spell for emotional truth, ancestral healing, and quiet sovereignty beneath the snow.',
     seasonalContext:
-      "In the Northern winter, the Wolf Supermoon rises over frozen ground, illuminating everything that lives beneath the surface. Cancer's waters meet Capricorn's stone in the deep cold, asking you to look honestly at what you have been holding in the name of care, duty, or inherited obligation. This Moon is closer to Earth than most, pulling at your interior tides with unusual strength. The wolf howls not from aggression but from clarity about what belongs in the den and what must stay outside.",
+      "In the Northern winter, the Snow Moon rises over frozen ground, illuminating everything that lives beneath the surface. Cancer's waters meet Capricorn's stone in the deep cold, asking you to look honestly at what you have been holding in the name of care, duty, or inherited obligation. This Full Moon pulls strongly at the inner tides, demanding emotional truth without performance.",
     fullSpell: `Full Moon in Cancer - Northern Hemisphere
 Theme: emotional truth, ancestral healing, boundary setting
 Items: white or silver candle, bowl of clean water (snow or ice melted if possible), smooth stone, paper, pen, small sprig of evergreen
 Colours: pearl white, ice blue, dark forest green, winter grey
 
 Steps
-1) Sit somewhere quiet with your candle lit. Hold the stone in your left hand and feel its weight. Say softly: "I am permitted to know what I feel without apology."
-2) On your paper, write three truths you have been avoiding about your emotional patterns or family inheritance. Be ruthlessly honest. Cancer under a Supermoon will not accept performance.
+1) Sit somewhere quiet with your candle lit. Hold the stone in your left hand and say softly: "I am permitted to know what I feel without apology."
+2) On your paper, write three truths you have been avoiding about your emotional patterns or family inheritance. Be ruthlessly honest. Cancer under this Full Moon will not accept performance.
 3) Read each truth aloud, then dip the evergreen sprig into the water and touch it to your forehead, throat, and heart. Say: "I see this. I speak this. I feel this. And I choose differently."
 4) Fold the paper small and place it under the bowl of water. Let the candle burn while you sit in silence, watching the flame's reflection in the water. This is you observing your own emotional world without drowning in it.
 5) After at least ten minutes, take the paper outside and bury it in frozen earth or snow. The winter will compost what you have released. Keep the stone as a reminder of your sovereignty.
-6) Return inside and drink a full glass of water slowly, feeling it travel through your body. You are clearing the channel. The Wolf Moon teaches that protection begins with knowing exactly what you are protecting.
+6) Return inside and drink a full glass of water slowly, feeling it travel through your body. You are clearing the channel. The Snow Moon teaches that protection begins with knowing exactly what you are protecting.
 
 Note
-This Supermoon magnifies all emotional material. If feelings surge in the days following this ritual, let them. The wolf does not apologise for howling at what it sees clearly in the moonlight.`,
-    moonPhase: 'Full Moon in Cancer (Wolf Supermoon)',
+This Full Moon magnifies emotional material. If feelings surge in the days following this ritual, let them. The Snow Moon rewards honesty.`,
+    moonPhase: 'Full Moon in Cancer (Snow Moon)',
     element: 'Water',
   };
 }
@@ -122,9 +123,9 @@ export default function MysticMishScreen() {
   const handleSettings = () => router.push('/(tabs)/settings');
   const handleAccount = () => router.push('/settings');
 
-  // Wolf Moon spells only
-  const southernWolfMoon = buildWolfMoonSpell('Southern');
-  const northernWolfMoon = buildWolfMoonSpell('Northern');
+  // Snow Moon spells
+  const southernSpell = buildSnowMoonSpell('Southern');
+  const northernSpell = buildSnowMoonSpell('Northern');
 
   if (loading) {
     return (
@@ -266,7 +267,7 @@ export default function MysticMishScreen() {
             <View style={styles.welcomeContent}>
               <Text style={styles.welcomeTitle}>Welcome, cosmic soul</Text>
               <Text style={styles.welcomeText}>
-                I am Mystic Mish. I appear when the energy is ripe for magic. Let us align your ritual to the Wolf Moon and your hemisphere.
+                I am Mystic Mish. I appear when the energy is ripe for magic. Let us align your ritual to the current Full Moon and your hemisphere.
               </Text>
             </View>
           </LinearGradient>
@@ -288,7 +289,7 @@ export default function MysticMishScreen() {
             )}
 
             <Text style={styles.moonMessage}>
-              The Wolf Moon is here. This is release, protection, and emotional sovereignty.
+              The Full Moon is here. This is culmination, release, and emotional clarity.
             </Text>
             <Text style={styles.moonDescription}>
               Choose the ritual for your hemisphere below. Full Moon energy is perfect for letting go with clarity.
@@ -305,30 +306,30 @@ export default function MysticMishScreen() {
             >
               <View style={styles.spellHeader}>
                 <Scroll size={20} color="#d4af37" />
-                <Text style={styles.spellTitle}>{southernWolfMoon.title}</Text>
+                <Text style={styles.spellTitle}>{southernSpell.title}</Text>
               </View>
-              <Text style={styles.spellSubtitle}>{southernWolfMoon.subtitle}</Text>
-              <Text style={styles.spellDescription}>{southernWolfMoon.description}</Text>
+              <Text style={styles.spellSubtitle}>{southernSpell.subtitle}</Text>
+              <Text style={styles.spellDescription}>{southernSpell.description}</Text>
 
               <View style={styles.seasonalContextContainer}>
                 <Text style={styles.seasonalContextTitle}>Seasonal Context</Text>
-                <Text style={styles.seasonalContextText}>{southernWolfMoon.seasonalContext}</Text>
+                <Text style={styles.seasonalContextText}>{southernSpell.seasonalContext}</Text>
               </View>
 
               <View style={styles.spellDetails}>
                 <View style={styles.spellDetailItem}>
                   <Text style={styles.spellDetailLabel}>Moon Phase</Text>
-                  <Text style={styles.spellDetailValue}>{southernWolfMoon.moonPhase}</Text>
+                  <Text style={styles.spellDetailValue}>{southernSpell.moonPhase}</Text>
                 </View>
                 <View style={styles.spellDetailItem}>
                   <Text style={styles.spellDetailLabel}>Element</Text>
-                  <Text style={styles.spellDetailValue}>{southernWolfMoon.element}</Text>
+                  <Text style={styles.spellDetailValue}>{southernSpell.element}</Text>
                 </View>
               </View>
 
               <View style={styles.fullSpellContainer}>
                 <Text style={styles.fullSpellTitle}>The Ritual</Text>
-                <Text style={styles.fullSpellText}>{southernWolfMoon.fullSpell}</Text>
+                <Text style={styles.fullSpellText}>{southernSpell.fullSpell}</Text>
               </View>
             </LinearGradient>
           </View>
@@ -343,30 +344,30 @@ export default function MysticMishScreen() {
             >
               <View style={styles.spellHeader}>
                 <Scroll size={20} color="#8b9dc3" />
-                <Text style={styles.spellTitle}>{northernWolfMoon.title}</Text>
+                <Text style={styles.spellTitle}>{northernSpell.title}</Text>
               </View>
-              <Text style={styles.spellSubtitle}>{northernWolfMoon.subtitle}</Text>
-              <Text style={styles.spellDescription}>{northernWolfMoon.description}</Text>
+              <Text style={styles.spellSubtitle}>{northernSpell.subtitle}</Text>
+              <Text style={styles.spellDescription}>{northernSpell.description}</Text>
 
               <View style={styles.seasonalContextContainer}>
                 <Text style={styles.seasonalContextTitle}>Seasonal Context</Text>
-                <Text style={styles.seasonalContextText}>{northernWolfMoon.seasonalContext}</Text>
+                <Text style={styles.seasonalContextText}>{northernSpell.seasonalContext}</Text>
               </View>
 
               <View style={styles.spellDetails}>
                 <View style={styles.spellDetailItem}>
                   <Text style={styles.spellDetailLabel}>Moon Phase</Text>
-                  <Text style={styles.spellDetailValue}>{northernWolfMoon.moonPhase}</Text>
+                  <Text style={styles.spellDetailValue}>{northernSpell.moonPhase}</Text>
                 </View>
                 <View style={styles.spellDetailItem}>
                   <Text style={styles.spellDetailLabel}>Element</Text>
-                  <Text style={styles.spellDetailValue}>{northernWolfMoon.element}</Text>
+                  <Text style={styles.spellDetailValue}>{northernSpell.element}</Text>
                 </View>
               </View>
 
               <View style={styles.fullSpellContainer}>
                 <Text style={styles.fullSpellTitle}>The Ritual</Text>
-                <Text style={styles.fullSpellText}>{northernWolfMoon.fullSpell}</Text>
+                <Text style={styles.fullSpellText}>{northernSpell.fullSpell}</Text>
               </View>
             </LinearGradient>
           </View>
