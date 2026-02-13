@@ -6,6 +6,8 @@ import {
   ScrollView,
   SafeAreaView,
   TouchableOpacity,
+  Linking,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -18,6 +20,44 @@ export default function TermsScreen() {
       router.back();
     } else {
       router.replace('/(tabs)/settings');
+    }
+  };
+
+  const handleEmailPress = async () => {
+    const email = 'support@astrocusp.com.au';
+    const subject = encodeURIComponent('Astro Cusp Support');
+    const body = encodeURIComponent('Hello Astro Cusp team,\n\nI need help with:\n\n');
+    const url = `mailto:${email}?subject=${subject}&body=${body}`;
+
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) {
+        Alert.alert(
+          'Email not available',
+          `Please email us at ${email}.`
+        );
+        return;
+      }
+      await Linking.openURL(url);
+    } catch (e: any) {
+      Alert.alert(
+        'Unable to open email',
+        `Please email us at ${email}.`
+      );
+    }
+  };
+
+  const handleInstagramPress = async () => {
+    const url = 'https://instagram.com/astrocusp';
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) {
+        Alert.alert('Unable to open Instagram', 'Please search for Astro Cusp on Instagram.');
+        return;
+      }
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('Unable to open Instagram', 'Please search for Astro Cusp on Instagram.');
     }
   };
 
@@ -42,11 +82,11 @@ export default function TermsScreen() {
             >
               <Text style={styles.sectionTitle}>Welcome to Astro Cusp</Text>
               <Text style={styles.sectionText}>
-                These Terms and Conditions ("Terms") govern your use of the Astro Cusp mobile application 
+                These Terms and Conditions ("Terms") govern your use of the Astro Cusp mobile application
                 ("App", "Service") operated by Astro Cusp ("we", "us", "our").
               </Text>
               <Text style={styles.sectionText}>
-                By accessing or using our Service, you agree to be bound by these Terms. 
+                By accessing or using our Service, you agree to be bound by these Terms.
                 If you disagree with any part of these terms, then you may not access the Service.
               </Text>
             </LinearGradient>
@@ -58,7 +98,7 @@ export default function TermsScreen() {
             >
               <Text style={styles.importantTitle}>Important: Guidance and Personal Responsibility</Text>
               <Text style={styles.sectionText}>
-                <Text style={styles.boldText}>Astro Cusp is a guidance tool designed to promote a positive state of mind</Text> and 
+                <Text style={styles.boldText}>Astro Cusp is a guidance tool designed to promote a positive state of mind</Text> and
                 provide astrological insights for entertainment and self-reflection purposes. Our content is intended to:
               </Text>
               <Text style={styles.bulletPoint}>• Inspire positive thinking and self-awareness</Text>
@@ -66,14 +106,14 @@ export default function TermsScreen() {
               <Text style={styles.bulletPoint}>• Encourage personal growth and reflection</Text>
               <Text style={styles.bulletPoint}>• Provide entertainment through astrological content</Text>
               <Text style={styles.bulletPoint}>• Awaken your subconscious mind</Text>
-              
+
               <Text style={styles.sectionText}>
-                <Text style={styles.boldText}>What the stars tell you and how it manifests in your life is entirely up to you as an individual.</Text> 
+                <Text style={styles.boldText}>What the stars tell you and how it manifests in your life is entirely up to you as an individual.</Text>
                 You have complete agency over your choices, actions, and responses to any guidance provided by our App.
               </Text>
-              
+
               <Text style={styles.sectionText}>
-                Astro Cusp does not predict the future, make guarantees about outcomes, or replace professional advice. 
+                Astro Cusp does not predict the future, make guarantees about outcomes, or replace professional advice.
                 All astrological content should be considered as one perspective among many in your decision-making process.
               </Text>
             </LinearGradient>
@@ -94,11 +134,11 @@ export default function TermsScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>User Accounts</Text>
               <Text style={styles.sectionText}>
-                When you create an account with us, you must provide accurate, complete, and current information. 
+                When you create an account with us, you must provide accurate, complete, and current information.
                 You are responsible for safeguarding your account and all activities that occur under your account.
               </Text>
               <Text style={styles.sectionText}>
-                We reserve the right to refuse service, terminate accounts, or cancel subscriptions 
+                We reserve the right to refuse service, terminate accounts, or cancel subscriptions
                 at our sole discretion without notice.
               </Text>
             </View>
@@ -107,11 +147,11 @@ export default function TermsScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Subscriptions and Payments</Text>
               <Text style={styles.sectionText}>
-                Some parts of the Service are billed on a subscription basis ("Subscription"). 
+                Some parts of the Service are billed on a subscription basis ("Subscription").
                 You will be billed in advance on a recurring basis.
               </Text>
               <Text style={styles.sectionText}>
-                Subscriptions automatically renew unless cancelled. You may cancel your subscription 
+                Subscriptions automatically renew unless cancelled. You may cancel your subscription
                 at any time through your account settings or app store subscription management.
               </Text>
               <Text style={styles.sectionText}>
@@ -123,11 +163,11 @@ export default function TermsScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Content and Intellectual Property</Text>
               <Text style={styles.sectionText}>
-                The Service and its original content, features, and functionality are owned by The Cusp 
+                The Service and its original content, features, and functionality are owned by The Cusp
                 and are protected by international copyright, trademark, and other intellectual property laws.
               </Text>
               <Text style={styles.sectionText}>
-                All astrological content, horoscopes, and guidance provided through the App are original 
+                All astrological content, horoscopes, and guidance provided through the App are original
                 works created specifically for the Astro Cusp platform.
               </Text>
             </View>
@@ -136,11 +176,11 @@ export default function TermsScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Privacy</Text>
               <Text style={styles.sectionText}>
-                Your privacy is important to us. We collect minimal personal information necessary 
+                Your privacy is important to us. We collect minimal personal information necessary
                 to provide our Service, including your birth information for astrological calculations.
               </Text>
               <Text style={styles.sectionText}>
-                We do not sell, trade, or share your personal information with third parties. 
+                We do not sell, trade, or share your personal information with third parties.
                 Your birth data is used solely for generating personalised astrological content.
               </Text>
             </View>
@@ -152,19 +192,19 @@ export default function TermsScreen() {
             >
               <Text style={styles.sectionTitle}>Disclaimers</Text>
               <Text style={styles.sectionText}>
-                <Text style={styles.boldText}>Entertainment and Guidance Only:</Text> The Cusp provides astrological content 
+                <Text style={styles.boldText}>Entertainment and Guidance Only:</Text> The Cusp provides astrological content
                 for entertainment, self-reflection, and positive mindset cultivation. It is not intended as professional advice.
               </Text>
               <Text style={styles.sectionText}>
-                <Text style={styles.boldText}>No Guarantees:</Text> We make no representations or warranties about the accuracy, 
+                <Text style={styles.boldText}>No Guarantees:</Text> We make no representations or warranties about the accuracy,
                 completeness, or reliability of any astrological content provided.
               </Text>
               <Text style={styles.sectionText}>
-                <Text style={styles.boldText}>Personal Responsibility:</Text> You acknowledge that your interpretation and 
+                <Text style={styles.boldText}>Personal Responsibility:</Text> You acknowledge that your interpretation and
                 application of any guidance is your personal choice and responsibility.
               </Text>
               <Text style={styles.sectionText}>
-                <Text style={styles.boldText}>Not Professional Advice:</Text> The Service does not provide medical, legal, 
+                <Text style={styles.boldText}>Not Professional Advice:</Text> The Service does not provide medical, legal,
                 financial, or therapeutic advice. Consult qualified professionals for such matters.
               </Text>
             </LinearGradient>
@@ -173,7 +213,7 @@ export default function TermsScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Limitation of Liability</Text>
               <Text style={styles.sectionText}>
-                In no event shall The Cusp, its directors, employees, or agents be liable for any indirect, 
+                In no event shall The Cusp, its directors, employees, or agents be liable for any indirect,
                 incidental, special, consequential, or punitive damages arising out of your use of the Service.
               </Text>
             </View>
@@ -182,7 +222,7 @@ export default function TermsScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Termination</Text>
               <Text style={styles.sectionText}>
-                We may terminate or suspend your account and access to the Service immediately, 
+                We may terminate or suspend your account and access to the Service immediately,
                 without prior notice, for conduct that we believe violates these Terms.
               </Text>
             </View>
@@ -191,7 +231,7 @@ export default function TermsScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Changes to Terms</Text>
               <Text style={styles.sectionText}>
-                We reserve the right to modify these Terms at any time. We will notify users of any 
+                We reserve the right to modify these Terms at any time. We will notify users of any
                 material changes by posting the new Terms in the App.
               </Text>
               <Text style={styles.sectionText}>
@@ -205,10 +245,23 @@ export default function TermsScreen() {
               style={styles.sectionCard}
             >
               <Text style={styles.sectionTitle}>Contact Us</Text>
+
               <Text style={styles.sectionText}>
-                If you have any questions about these Terms and Conditions, please contact us at 
-                Mysticmish@astrocusp.com.au or You can DM Mystic Mish through instagram at Astrocusp
+                If you have any questions about these Terms and Conditions, please contact us:
               </Text>
+
+              <View style={styles.contactDetails}>
+                <TouchableOpacity style={styles.contactItem} onPress={handleEmailPress}>
+                  <Text style={styles.contactText}>Email: support@astrocusp.com.au</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.contactItem} onPress={handleInstagramPress}>
+                  <View style={styles.instagramIcon}>
+                    <Text style={styles.instagramText}>📷</Text>
+                  </View>
+                  <Text style={styles.contactText}>Instagram: @astrocusp</Text>
+                </TouchableOpacity>
+              </View>
             </LinearGradient>
 
             {/* Final Reminder */}
@@ -218,9 +271,9 @@ export default function TermsScreen() {
             >
               <Text style={styles.finalTitle}>Remember</Text>
               <Text style={styles.finalText}>
-                Astro Cusp is here to inspire, guide, and support your journey of self-discovery. 
-                The cosmic insights we provide are tools for reflection—how you choose to use them 
-                is entirely in your hands. Trust your intuition, embrace your agency, and let the 
+                Astro Cusp is here to inspire, guide, and support your journey of self-discovery.
+                The cosmic insights we provide are tools for reflection, how you choose to use them
+                is entirely in your hands. Trust your intuition, embrace your agency, and let the
                 stars illuminate your path while you walk it with intention.
               </Text>
             </LinearGradient>
