@@ -1,4 +1,4 @@
-// components/MysticMish.tsx 
+// components/MysticMish.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -31,12 +31,12 @@ interface MysticMishProps {
   hemisphere: 'Northern' | 'Southern';
 }
 
-function buildSnowMoonTeaser(hemisphere: 'Northern' | 'Southern') {
+function buildBloodMoonEclipseTeaser(hemisphere: 'Northern' | 'Southern') {
   if (hemisphere === 'Southern') {
-    return 'The Grain Moon reveals what has finished growing. Click Mystic Mish to choose what you carry forward.';
+    return 'The Blood Moon eclipse exposes what you have been perfecting to feel safe. Tap Mystic Mish to release the burden and recalibrate.';
   }
 
-  return 'The Snow Moon illuminates hidden emotions. Click Mystic Mish to reclaim what is truly yours.';
+  return 'The Worm Moon turns Blood red and wakes what has been dormant. Tap Mystic Mish to break the old pattern and step into renewal.';
 }
 
 export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishProps) {
@@ -94,7 +94,8 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
       setPlanetaryPositions([]);
     }
 
-    const teaser = buildSnowMoonTeaser(hemisphere);
+    // Updated teasers to align with the Blood Moon Eclipse spells
+    const teaser = buildBloodMoonEclipseTeaser(hemisphere);
 
     if (isMounted.current) {
       setCurrentRitual(teaser);
@@ -183,10 +184,7 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
               {moonPhase.phase} ({moonPhase.illumination}%)
             </Text>
             <Text style={styles.ritualText}>{currentRitual}</Text>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setShowRitual(false)}
-            >
+            <TouchableOpacity style={styles.closeButton} onPress={() => setShowRitual(false)}>
               <Text style={styles.closeButtonText}>Thank you, Mish! 🌟</Text>
             </TouchableOpacity>
           </LinearGradient>

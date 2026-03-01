@@ -1,4 +1,4 @@
-// app/(tabs)/MysticMish.tsx 
+// app/(tabs)/MysticMish.tsx
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -6,7 +6,6 @@ import {
   StyleSheet,
   ScrollView,
   SafeAreaView,
-  TouchableOpacity,
   Image,
   ActivityIndicator,
   Platform,
@@ -16,7 +15,6 @@ import { useRouter } from 'expo-router';
 import { Moon, Star, Sparkles, Eye, Scroll, Crown } from 'lucide-react-native';
 import CosmicBackground from '../../components/CosmicBackground';
 import CosmicButton from '../../components/CosmicButton';
-import HoroscopeHeader from '../../components/HoroscopeHeader';
 import { getCurrentMoonPhase } from '../../utils/astronomy';
 import { getSubscriptionStatus } from '../../utils/billing';
 
@@ -28,60 +26,61 @@ if (typeof Platform === 'undefined') {
 // ✅ Pre import the avatar image
 const mishAvatar = require('../../assets/images/mystic-mish/headshot.png');
 
-function buildSnowMoonSpell(hemisphere: 'Northern' | 'Southern') {
+function buildBloodMoonEclipseSpell(hemisphere: 'Northern' | 'Southern') {
   if (hemisphere === 'Southern') {
     return {
-      title: '🌾 Grain Moon Release & Nourishment',
-      subtitle: 'Full Moon in Cancer - Southern Hemisphere',
+      title: '🍂 Eclipse of the Falling Leaves',
+      subtitle: 'Full Moon Lunar Eclipse in Virgo - Southern Hemisphere',
       description:
-        'A late summer spell for emotional nourishment, ancestral completion, and choosing what you carry forward.',
+        'A late summer to early autumn eclipse spell for purification, karmic clearing, and releasing perfection that no longer serves you.',
       seasonalContext:
-        "The February Full Moon rises over the Southern Hemisphere in late summer, when the land is heavy with growth and the air still holds warmth from the sun. Often called the Grain Moon in seasonal folk naming, this lunation marks a moment of culmination rather than survival. What has been growing beneath the surface is now visible, ripe, and ready to be sorted. With the Moon in Cancer and the Sun opposing in Capricorn, you are asked to choose what truly nourishes you and consciously release the rest.",
-      fullSpell: `Full Moon in Cancer - Southern Hemisphere
-Theme: emotional nourishment, ancestral completion, conscious release
-Items: yellow or soft gold candle, small bowl of grains (rice, barley, oats, or seeds), paper, pen, heat safe bowl, small glass of water, salt
-Colours: wheat gold, warm sand, ocean blue, soft white
+        'In the Southern Hemisphere, this eclipse rises as the heat begins to soften and the first hints of autumn stir. Virgo governs refinement, discernment, health, and sacred order. But under a Blood Moon eclipse, Virgo energy can expose where you have over corrected, over controlled, or tried to earn worth through perfection. Eclipses remove what is unsustainable. This ritual clears self judgement, inherited standards, and quiet exhaustion.',
+      fullSpell: `Full Moon Lunar Eclipse in Virgo - Southern Hemisphere
+Theme: purification, karmic release, sacred recalibration
+Items: dark red or deep burgundy candle, small bowl of salt, dried bay leaf, paper, pen, small dish of soil, heat safe bowl
+Colours: rust red, charcoal, deep olive, ash grey
 
 Steps
-1) Sit somewhere calm, preferably outdoors or near an open window. Place the grains in front of you and light the candle. Rest one hand on your belly and say: "I honour what has grown within me. I choose what feeds me now."
-2) On the paper, write three emotional patterns, obligations, or inherited stories that have completed their purpose. These are not failures. They are harvests.
-3) Tear the paper into strips. As you tear each one, say: "This has fed me enough. I release it with gratitude."
-4) Place a pinch of grain into the bowl for each strip you tear, acknowledging what it once provided. Safely burn the paper and let the ash fall into the bowl.
-5) Add a pinch of salt to the water and drink half slowly. Use the remaining water to dampen the grains and ash, saying your name once with clarity.
-6) Return the mixture to the earth, garden, or compost. Do not rush. The Grain Moon blesses deliberate endings.
-7) Before sleep, place your hands on your heart and stomach. Breathe deeply and visualise only what truly nourishes you remaining.
+1) Step outside if possible during the eclipse peak. If not, open a window. Light the red candle and place the bowl of salt before you. Say: "I allow what is misaligned to be revealed. I am willing to release what I have outgrown."
+2) On the paper, write three standards or expectations you have been holding yourself to that feel heavy or joyless. Be precise. Virgo honours honesty.
+3) Sprinkle salt over the paper and fold it once. Place a bay leaf on top and say: "I release the burden of earning my worth."
+4) Burn the paper safely in the heat safe bowl. Watch it fully turn to ash. Do not rush this.
+5) Mix the ash into the soil. Press your fingertips into the mixture and touch your forehead and heart.
+6) Return the soil to the earth tomorrow morning. Eclipses seal overnight.
+7) Before sleep, wash your hands slowly with warm water and say your full name clearly. You are closing one chapter.
 
 Note
-This Full Moon heightens emotional awareness around care, family, and obligation. Treat what arises as information, not urgency. The Grain Moon teaches discernment.`,
-      moonPhase: 'Full Moon in Cancer (Grain Moon)',
-      element: 'Earth & Water',
+Eclipses can feel destabilising in the days before and after. If something exits your life around this time, trust that it was already fragile. The Blood Moon clears what quiet discipline has been unable to.`,
+      moonPhase: 'Total Lunar Eclipse in Virgo (Blood Moon)',
+      element: 'Earth & Fire',
     };
   }
 
   return {
-    title: '❄️ Snow Moon Water Reclamation',
-    subtitle: 'Full Moon in Cancer - Northern Hemisphere',
+    title: '🪱 Worm Moon Eclipse Threshold',
+    subtitle: 'Full Moon Lunar Eclipse in Virgo - Northern Hemisphere',
     description:
-      'A midwinter spell for emotional truth, ancestral healing, and quiet sovereignty beneath the snow.',
+      'An early spring eclipse spell for breaking dormant patterns and reclaiming embodied power.',
     seasonalContext:
-      "In the Northern winter, the Snow Moon rises over frozen ground, illuminating everything that lives beneath the surface. Cancer's waters meet Capricorn's stone in the deep cold, asking you to look honestly at what you have been holding in the name of care, duty, or inherited obligation. This Full Moon pulls strongly at the inner tides, demanding emotional truth without performance.",
-    fullSpell: `Full Moon in Cancer - Northern Hemisphere
-Theme: emotional truth, ancestral healing, boundary setting
-Items: white or silver candle, bowl of clean water (snow or ice melted if possible), smooth stone, paper, pen, small sprig of evergreen
-Colours: pearl white, ice blue, dark forest green, winter grey
+      'In the Northern Hemisphere, the Worm Moon signals thawing soil and the return of movement beneath the ground. Earthworms rise as the frost retreats. Life begins again. But this year, the Worm Moon becomes a Blood Moon eclipse. What has been hidden beneath the surface may surface abruptly. Virgo energy highlights habits, health, routines, and internal criticism. This ritual breaks cycles that survived winter but cannot follow you into spring.',
+    fullSpell: `Full Moon Lunar Eclipse in Virgo - Northern Hemisphere
+Theme: pattern breaking, embodied reset, karmic shedding
+Items: white candle, small bowl of soil or compost, dried herbs such as rosemary or thyme, paper, pen, small bell or chime
+Colours: soft green, cream, earthy brown, muted red
 
 Steps
-1) Sit somewhere quiet with your candle lit. Hold the stone in your left hand and say softly: "I am permitted to know what I feel without apology."
-2) On your paper, write three truths you have been avoiding about your emotional patterns or family inheritance. Be ruthlessly honest. Cancer under this Full Moon will not accept performance.
-3) Read each truth aloud, then dip the evergreen sprig into the water and touch it to your forehead, throat, and heart. Say: "I see this. I speak this. I feel this. And I choose differently."
-4) Fold the paper small and place it under the bowl of water. Let the candle burn while you sit in silence, watching the flame's reflection in the water. This is you observing your own emotional world without drowning in it.
-5) After at least ten minutes, take the paper outside and bury it in frozen earth or snow. The winter will compost what you have released. Keep the stone as a reminder of your sovereignty.
-6) Return inside and drink a full glass of water slowly, feeling it travel through your body. You are clearing the channel. The Snow Moon teaches that protection begins with knowing exactly what you are protecting.
+1) Light the candle. Hold the soil in your hands and say: "I am ready for what awakens now."
+2) Write down three habits, self criticisms, or routines that have kept you small.
+3) Crumble the paper into the soil. Mix it with your fingers. Say: "This pattern dissolves. I choose renewal."
+4) Sprinkle the dried herbs into the bowl. Ring the bell once clearly. Sound seals eclipse work.
+5) Sit quietly for five minutes visualising roots growing from your feet into thawing earth. You are stabilising new ground.
+6) Bury the mixture outdoors within three days. Do not keep eclipse remnants inside your home.
+7) On the morning after burial, change one small daily habit immediately. Eclipses demand action.
 
 Note
-This Full Moon magnifies emotional material. If feelings surge in the days following this ritual, let them. The Snow Moon rewards honesty.`,
-    moonPhase: 'Full Moon in Cancer (Snow Moon)',
-    element: 'Water',
+If revelations arrive suddenly, resist the urge to over analyse. Virgo under eclipse energy reveals flaws not to shame you, but to liberate you.`,
+    moonPhase: 'Total Lunar Eclipse in Virgo (Blood Moon, Worm Moon)',
+    element: 'Earth & Air',
   };
 }
 
@@ -120,12 +119,10 @@ export default function MysticMishScreen() {
   }, []);
 
   const handleUpgrade = () => router.push('/subscription');
-  const handleSettings = () => router.push('/(tabs)/settings');
-  const handleAccount = () => router.push('/settings');
 
-  // Snow Moon spells
-  const southernSpell = buildSnowMoonSpell('Southern');
-  const northernSpell = buildSnowMoonSpell('Northern');
+  // Blood Moon Eclipse spells
+  const southernSpell = buildBloodMoonEclipseSpell('Southern');
+  const northernSpell = buildBloodMoonEclipseSpell('Northern');
 
   if (loading) {
     return (
@@ -231,6 +228,12 @@ export default function MysticMishScreen() {
       tip:
         'Small daily rituals compound. Light a candle, speak one line, breathe with intention.',
     },
+    {
+      icon: <Eye size={20} color="#d4af37" />,
+      title: 'Eclipse Energy',
+      tip:
+        'Eclipses accelerate fate. Use them for release and recalibration rather than big manifestations.',
+    },
   ];
 
   return (
@@ -267,7 +270,7 @@ export default function MysticMishScreen() {
             <View style={styles.welcomeContent}>
               <Text style={styles.welcomeTitle}>Welcome, cosmic soul</Text>
               <Text style={styles.welcomeText}>
-                I am Mystic Mish. I appear when the energy is ripe for magic. Let us align your ritual to the current Full Moon and your hemisphere.
+                I am Mystic Mish. I appear when the sky turns red and the veil thins. Let us align your ritual to the current Full Moon and your hemisphere.
               </Text>
             </View>
           </LinearGradient>
@@ -292,7 +295,7 @@ export default function MysticMishScreen() {
               The Full Moon is here. This is culmination, release, and emotional clarity.
             </Text>
             <Text style={styles.moonDescription}>
-              Choose the ritual for your hemisphere below. Full Moon energy is perfect for letting go with clarity.
+              This lunation is a Blood Moon eclipse. Eclipses accelerate truth. Choose the ritual for your hemisphere below.
             </Text>
           </LinearGradient>
 
@@ -400,7 +403,7 @@ export default function MysticMishScreen() {
               <Text style={styles.wisdomTitle}>Mish's Final Wisdom</Text>
             </View>
             <Text style={styles.wisdomText}>
-              "Magic lives in your intention and the way you tend it. Trust your rhythm. Work with the moon. Let your boundaries be clean and your heart be free."
+              "When the Moon turns red, truth is closer than comfort. Let what falls away fall. You are not losing stability. You are shedding a skin."
             </Text>
             <Text style={styles.wisdomSignature}>- Mystic Mish ✨</Text>
           </LinearGradient>
